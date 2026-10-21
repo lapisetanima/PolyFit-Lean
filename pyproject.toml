@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "polyfit"
+version = "0.1.0"
+description = "Best-fit polygons to pixel point sets, with the solver written in Lean 4"
+requires-python = ">=3.11"
+dependencies = ["numpy", "matplotlib"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ipykernel", "ipympl"]
+
+[tool.setuptools]
+packages = ["polyfit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

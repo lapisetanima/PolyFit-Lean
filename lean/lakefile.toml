@@ -1,0 +1,12 @@
+name = "polyfit"
+version = "0.1.0"
+defaultTargets = ["polyfit"]
+
+# The solver's definitions. Proofs will live in a separate library later.
+[[lean_lib]]
+name = "PolyFit"
+
+# The executable Python runs: JSON on stdin, JSON on stdout.
+[[lean_exe]]
+name = "polyfit"
+root = "Main"
