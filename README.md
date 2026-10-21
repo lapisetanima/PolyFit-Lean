@@ -1,65 +1,92 @@
 # polyfit-lean
 
-Best-fit polygons for sets of pixels, with the solver written in **Lean 4** and driven from **Python**.
+**Exact, certifiable polygon fitting, with the solver written in Lean 4 and designed for formal proof.**
 
-Given points on a pixel grid, polyfit-lean finds the polygon with *n* vertices (a point, a segment, a triangle, …) that best fits them. Some of the polygon's edges can be declared *missing*, for shapes that are open on one side. Every score is computed in **exact rational arithmetic**. Each result can be **certified**: an exhaustive check shows that no nearby polygon scores better. Formal Lean proofs of the algorithm's guarantees are the next stage of the project.
+Given a set of pixels, polyfit-lean finds the polygon with *n* vertices (a point, a segment, a triangle, …) that best fits them, optionally with some edges declared *missing*, for shapes that are open on one side. Three things set it apart:
+
+- **A new objective function.** A two-sided, mean-square relative of the Hausdorff distance. It measures both how well the polygon covers the points and how well the points cover the polygon, and it is scale-invariant.
+- **Exact arithmetic throughout.** Every score, including an integral along each edge, is an exact rational number. The solver contains no floating point.
+- **Certified results, built for verification.** Each fit can be certified as a local minimum by an exhaustive check, and the Lean code is structured so that these guarantees can be proved formally. That is the project's next stage.
 
 ![Fits with 3 to 8 vertices to a thick, noisy pentagon outline, and the objective against n](docs/images/thick_data.png)
 
-*Fits to a noisy pentagon outline of 223 points, with n = 3 … 8. Light blue: the coarse initial guess. Red: the refined fit. The objective (last panel) is lowest at the true n = 5, where its two parts balance.*
+*Fits to a noisy pentagon outline (223 points) with n = 3 … 8. Light blue: the coarse initial guess. Red: the refined, certified fit. Last panel: the objective and its two parts. It is lowest at the true n = 5, where the two parts balance.*
 
-## The objective
+---
 
-For points $P$ and a polygon $Q$ with present edges $\ell_i$, let $d_1(x, A) = \inf_{a \in A} |x - a|$. Two scale-invariant terms are combined:
+## The objective function
 
-- **Points to polygon:** $D_1(P, Q)^2 = \dfrac{1}{\mathrm{diam}(P)^2}\,\dfrac{1}{|P|}\sum_{p \in P} d_1(p, Q)^2$
-- **Polygon to points**, for each edge: $D_2(\ell, P)^2 = \dfrac{1}{L(\ell)^2}\displaystyle\int_0^1 d_1(q_0 + t(q_1 - q_0), P)^2\,dt$
+For a point set $P$ and a polygon $Q$, write $d_1(x, A) = \inf_{a\in A}|x - a|$. The objective combines two terms:
 
-and
+$$
+D_1(P,Q)^2 = \frac{1}{\mathrm{diam}(P)^2}\cdot\frac{1}{|P|}\sum_{p\in P} d_1(p,Q)^2,
+\qquad
+D_2(\ell,P)^2 = \frac{1}{L(\ell)^2}\int_0^1 d_1\big(q_0 + t(q_1-q_0),\,P\big)^2\,dt ,
+$$
 
-$$F(Q)^2 = \tfrac12 D_1(P, Q)^2 + \frac{1}{2m}\sum_{i \notin M} D_2(\ell_i, P)^2 ,$$
+$$
+F(Q)^2 \;=\; \tfrac12\, D_1(P,Q)^2 \;+\; \frac{1}{2m}\sum_{i\notin M} D_2(\ell_i,P)^2 ,
+$$
 
-where $M$ is the set of missing edges and $m$ the number of present ones. This is a two-sided, mean-square relative of the Hausdorff distance. $D_1$ makes the polygon pass near the points, and $D_2$ keeps its edges from running through empty space or past the ends of the data.
+where $\ell_i$ are the polygon's edges, $M$ the missing ones, and $m$ the number present.
 
-**Exactness.** Polygon vertices are integer points, so every quantity is rational. In particular, along an edge every $|q(t) - p|^2$ is a quadratic in $t$ with the *same* $t^2$ coefficient. So $\min_p |q(t)-p|^2$ is a fixed quadratic plus the lower envelope of straight lines, and its integral is computed exactly by walking the envelope. No floating point is used anywhere in the solver.
+**Why this shape of objective.** The Hausdorff distance between two sets combines the two directed distances, *points → shape* and *shape → points*, but by their maximum: it is an $L^\infty$ measure, so a single outlier decides it. $F$ keeps both directions but averages squares, as an $L^2$ measure:
 
-The full specification and the design decisions are in [docs/spec.md](docs/spec.md).
+- $D_1$ (points → polygon) is essentially orthogonal least squares. When points are plentiful it is the maximum-likelihood fit of the edge lines under Gaussian noise.
+- $D_2$ (polygon → points) is an integral along each edge. It decides what $D_1$ cannot see: where edges **start and stop**, edges that run **through empty space**, and how many vertices are justified.
 
-## How a fit works
+**Some consequences, derived and confirmed by experiment.**
 
-1. **Describe** the point set: exact centre of mass, diameter, radii, and convex hull.
+- **Principled overshoot.** For collinear points spaced $g$ apart, the optimal segment extends exactly $g/2$ beyond the outermost points at each end. This is the right answer if the points are samples of a longer segment, and it vanishes as the sampling gets denser.
+- **A built-in complexity penalty.** Each edge's $D_2$ is roughly *(gap between points) ÷ (edge length)*. For a fixed outline, extra vertices shorten the edges, so the $D_2$ part grows like $n^2$. On data with real corners, $F$ is therefore lowest near the true number of corners (as in the figure); on unstructured data it prefers small polygons.
+- **Evenly sized edges.** For a fixed perimeter, $\sum_i 1/L_i^2$ is smallest when all lengths are equal (it is a convex function of the lengths), so fits avoid tiny edges.
+- **Scale invariance.** Both terms are dimensionless, so the fit does not depend on the image resolution.
+
+## Exactness: an integral computed in rational arithmetic
+
+Polygon vertices live on the integer grid, so the distance and length terms are rational. The edge integral is the interesting part. Along an edge, $q(t) = q_0 + tv$ with $L^2 = |v|^2$, and
+
+$$
+|q(t)-p|^2 = L^2 t^2 + a_p t + b_p ,\qquad a_p = 2(q_0-p)\cdot v,\quad b_p = |q_0-p|^2 .
+$$
+
+Every point $p$ gives a quadratic with the **same** $t^2$ coefficient. Hence
+
+$$
+\min_p |q(t)-p|^2 = L^2 t^2 + \min_p\,(a_p t + b_p),
+$$
+
+so the integrand is a fixed quadratic plus the **lower envelope of straight lines** with integer coefficients. The envelope's breakpoints are rational, and each piece integrates exactly. So the whole objective $F^2$ is an exact rational number, computed with Lean's arbitrary-precision integers and rationals.
+
+## The algorithm
+
+1. **Describe** the point set: exact centre of mass, diameter, radii, convex hull.
 2. **Reduce the hull** to at most $2n$ candidate vertices (Visvalingam–Whyatt).
-3. **Rough fit:** score every cyclically ordered $n$-subset of the candidates (and every labelling of the edges, when edges are missing) and keep the best $K$. Scoring is pruned exactly: a candidate is abandoned as soon as it provably cannot make the top $K$.
-4. **Fine fit:** a pattern search with a move set that grows linearly in $n$.
-5. **Ultra-fine fit:** check *all* $9^n - 1$ polygons in the unit cube around the result (every vertex moved by at most one pixel in each coordinate). If none is better, the result is **certified** as a local minimum. Whole-number lower bounds screen candidates exactly, which makes this practical up to $n = 7$.
+3. **Rough fit:** a global search over every cyclically ordered $n$-subset of the candidates, and over every labelling of the edges when some are missing.
+4. **Fine fit:** a local pattern search, with a move set that grows linearly in $n$.
+5. **Ultra-fine fit:** examine *all* $9^n - 1$ polygons in the unit cube around the result (every vertex moved by at most one pixel in each coordinate). If none is better, the result is **certified** as a local minimum.
 
-Python controls this pipeline step by step and records every attempt: the rough fits, the final polygon and its exact $F^2$, whether it is certified, and timings. Saved results are re-verified on loading by replaying each step in Lean.
+Every speed-up is **exact**, so it never changes the answer: candidates are abandoned only once they provably cannot win, and the ultra-fine check first screens candidates with whole-number lower bounds. A hexagon is fitted and certified in seconds.
 
-## Repository layout
+## Why Lean, and what will be proved
 
-| Path | Contents |
-|---|---|
-| [`lean/PolyFit/`](lean/PolyFit) | The Lean 4 solver: geometry, exact objective, hull, rough fit, local search, JSON protocol |
-| [`polyfit/`](polyfit) | The Python package: point sets and fit attempts, the bridge to Lean, plotting, an independent exact reference implementation |
-| [`tests/`](tests) | About 500 tests, most checking Lean's results exactly against the Python reference |
-| [`notebooks/explore.ipynb`](notebooks/explore.ipynb) | Experiments: sample shapes, random points, an annulus, dense noisy outlines |
-| [`docs/spec.md`](docs/spec.md) | The specification, decisions, and the plan for the proofs |
+Lean 4 is both a fast, compiled functional language and an interactive theorem prover. The solver is written so that its guarantees can be stated and proved *about the very code that runs*:
 
-## Getting started
+- **Termination by construction:** every loop is bounded, and the code uses no `partial` definitions.
+- **No floating point:** every quantity is an exact `Int`, `Nat` or `Rat`, so mathematical statements apply literally.
+- **Small, checkable steps:** each optimisation (pruning, caching, lower bounds) is a separate function with a one-line correctness property.
 
-Requirements: [elan](https://github.com/leanprover/elan) (Lean 4, version pinned in `lean/lean-toolchain`) and Python 3.11 or later.
+**Proof roadmap** (in progress, in a separate project using Mathlib):
 
-```bash
-# build the Lean solver
-cd lean
-lake build
-cd ..
+- [ ] **n = 1:** the rounded centre of mass minimises the objective over all integer points.
+- [ ] **Certificate theorem:** if a result is certified, then $F^2(Q') \ge F^2(Q)$ for every polygon $Q'$ in the unit cube around it.
+- [ ] **Faithfulness:** the computed objective equals the mathematical definition above, including the exact lower-envelope integral.
 
-# install the Python package and run the tests
-python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"     # on Linux/macOS: .venv/bin/python
-.venv/Scripts/python -m pytest
-```
+Together, the last two state that **every certified fit is a true local minimum of $F$**, checked by machine.
+
+## Using it
+
+Python drives the pipeline step by step and records every attempt: the rough fits, the final polygon, its exact $F^2$, whether it is certified, and timings. Saved results are re-verified on loading by replaying each step in Lean.
 
 ```python
 import polyfit
@@ -70,15 +97,30 @@ attempt = ps.fit(n_vertices=6)
 attempt.vertices, attempt.objective_sq, attempt.certified
 ```
 
-## Status
+**Setup:** [elan](https://github.com/leanprover/elan) (Lean 4; the version is pinned in `lean/lean-toolchain`) and Python 3.11 or later.
 
-- Working: fits for every n, missing edges, certification up to n = 7, recorded and re-verifiable attempts.
-- Next: formal Lean proofs, in a separate project that uses Mathlib. The first target is the n = 1 case (the rounded centre of mass is optimal). After that: the certificate theorem (a certified result really is a local minimum of the computed objective), and that the computed objective equals the mathematical definition above.
-- Ideas for later: faster local search for very large point sets, and branch and bound for certification at larger n.
+```bash
+cd lean && lake build && cd ..                       # build the Lean solver
+python -m venv .venv
+.venv/Scripts/python -m pip install -e ".[dev]"      # on Linux/macOS: .venv/bin/python
+.venv/Scripts/python -m pytest                       # about 500 tests
+```
 
-## How it was built
+| Path | Contents |
+|---|---|
+| [`lean/PolyFit/`](lean/PolyFit) | The Lean 4 solver: geometry, exact objective, hull, rough fit, local search, JSON protocol |
+| [`polyfit/`](polyfit) | The Python package: point sets, fit attempts, the Lean bridge, plotting, an independent exact reference implementation |
+| [`tests/`](tests) | Tests, most checking Lean's results exactly against the Python reference |
+| [`notebooks/explore.ipynb`](notebooks/explore.ipynb) | Experiments: sample shapes, random points, an annulus, dense noisy outlines |
+| [`docs/spec.md`](docs/spec.md) | The full specification, the design decisions, and the proof plan |
 
-The problem, the objective function, and the design decisions are by the author. The implementation was developed together with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant, working step by step from the specification in [docs/spec.md](docs/spec.md). Every Lean component is tested against an independent exact Python reference.
+## What this project demonstrates
+
+- **Mathematical modelling:** designing an objective from first principles, and analysing its behaviour (the overshoot, the complexity scaling, the balance between the two terms).
+- **Algorithm design with exactness in mind:** turning a continuous integral into exact rational arithmetic, and exact pruning that keeps an exponential search practical.
+- **Lean 4**, both as a programming language and as a foundation for formal verification.
+- **Software engineering across two languages:** a Lean executable behind a Python package, a JSON protocol, and extensive cross-checking tests.
+- **AI-assisted development:** built with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant. The problem, the objective function and the design decisions are the author's. The implementation was developed with Claude Code, working step by step from the specification in [docs/spec.md](docs/spec.md), with every component tested against an independent reference.
 
 ## License
 
