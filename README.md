@@ -2,7 +2,7 @@
 
 **Exact, certifiable polygon fitting, with the solver written in Lean 4 and designed for formal proof.**
 
-Given a set of pixels, polyfit-lean finds the polygon with *n* vertices (a point, a segment, a triangle, …) that best fits them, optionally with some edges declared *missing*, for shapes that are open on one side. Three things set it apart:
+Given a set of pixels, polyfit-lean finds the polygon with *n* vertices (a point, a segment, a triangle, …) that best fits them, optionally with some edges declared *missing*, for shapes that are open on one side. In brief:
 
 - **A new objective function.** A two-sided, mean-square relative of the Hausdorff distance. It measures both how well the polygon covers the points and how well the points cover the polygon, and it is scale-invariant.
 - **Exact arithmetic throughout.** Every score, including an integral along each edge, is an exact rational number. The solver contains no floating point.
@@ -114,13 +114,9 @@ python -m venv .venv
 | [`notebooks/explore.ipynb`](notebooks/explore.ipynb) | Experiments: sample shapes, random points, an annulus, dense noisy outlines |
 | [`docs/spec.md`](docs/spec.md) | The full specification, the design decisions, and the proof plan |
 
-## What this project demonstrates
+## Development
 
-- **Mathematical modelling:** designing an objective from first principles, and analysing its behaviour (the overshoot, the complexity scaling, the balance between the two terms).
-- **Algorithm design with exactness in mind:** turning a continuous integral into exact rational arithmetic, and exact pruning that keeps an exponential search practical.
-- **Lean 4**, both as a programming language and as a foundation for formal verification.
-- **Software engineering across two languages:** a Lean executable behind a Python package, a JSON protocol, and extensive cross-checking tests.
-- **AI-assisted development:** built with [Claude Code](https://claude.com/claude-code), Anthropic's AI coding assistant. The problem, the objective function and the design decisions are the author's. The implementation was developed with Claude Code, working step by step from the specification in [docs/spec.md](docs/spec.md), with every component tested against an independent reference.
+The problem, the objective function and the design decisions are the author's. The implementation was developed with [Claude Code](https://claude.com/claude-code), working step by step from the specification in [docs/spec.md](docs/spec.md), with every component tested against an independent reference.
 
 ## License
 
