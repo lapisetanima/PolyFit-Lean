@@ -21,7 +21,7 @@ For a point set $P$ and a polygon $Q$, write $d_1(x, A) = \inf_{a\in A}|x - a|$.
 $$
 D_1(P,Q)^2 = \frac{1}{\mathrm{diam}(P)^2}\cdot\frac{1}{|P|}\sum_{p\in P} d_1(p,Q)^2,
 \qquad
-D_2(\ell,P)^2 = \frac{1}{L(\ell)^2}\int_0^1 d_1\big(q_0 + t(q_1-q_0),\,P\big)^2\,dt ,
+D_2(\ell,P)^2 = \frac{1}{L(\ell)^2}\int_0^1 d_1\big(q_0 + t(q_1-q_0),P\big)^2 dt ,
 $$
 
 $$
@@ -53,7 +53,7 @@ $$
 Every point $p$ gives a quadratic with the **same** $t^2$ coefficient. Hence
 
 $$
-\min_p |q(t)-p|^2 = L^2 t^2 + \min_p\,(a_p t + b_p),
+\min_p |q(t)-p|^2 = L^2 t^2 + \min_p (a_p t + b_p),
 $$
 
 so the integrand is a fixed quadratic plus the **lower envelope of straight lines** with integer coefficients. The envelope's breakpoints are rational, and each piece integrates exactly. So the whole objective $F^2$ is an exact rational number, computed with Lean's arbitrary-precision integers and rationals.
@@ -61,9 +61,9 @@ so the integrand is a fixed quadratic plus the **lower envelope of straight line
 ## The algorithm
 
 1. **Describe** the point set: exact centre of mass, diameter, radii, convex hull.
-2. **Reduce the hull** to at most $2n$ candidate vertices (Visvalingam–Whyatt).
+2. **Reduce the hull** to at most $2n$ candidate vertices (using the Visvalingam–Whyatt trimming algorithm).
 3. **Rough fit:** a global search over every cyclically ordered $n$-subset of the candidates, and over every labelling of the edges when some are missing.
-4. **Fine fit:** a local pattern search, with a move set that grows linearly in $n$.
+4. **Fine fit:** a local pattern search, with a move set that grows linearly in the polygon number $n$.
 5. **Ultra-fine fit:** examine *all* $9^n - 1$ polygons in the unit cube around the result (every vertex moved by at most one pixel in each coordinate). If none is better, the result is **certified** as a local minimum.
 
 Every speed-up is **exact**, so it never changes the answer: candidates are abandoned only once they provably cannot win, and the ultra-fine check first screens candidates with whole-number lower bounds. A hexagon is fitted and certified in seconds.
