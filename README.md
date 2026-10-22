@@ -25,7 +25,7 @@ D_2(\ell,P)^2 = \frac{1}{L(\ell)^2}\int_0^1 d_1\big(q_0 + t(q_1-q_0),\,P\big)^2\
 $$
 
 $$
-F(Q)^2 \;=\; \tfrac12\, D_1(P,Q)^2 \;+\; \frac{1}{2m}\sum_{i\notin M} D_2(\ell_i,P)^2 ,
+F(Q)^2 = \tfrac12 D_1(P,Q)^2 + \frac{1}{2m}\sum_{i\notin M} D_2(\ell_i,P)^2 ,
 $$
 
 where $\ell_i$ are the polygon's edges, $M$ the missing ones, and $m$ the number present.
