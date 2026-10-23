@@ -78,7 +78,7 @@ Lean 4 is both a fast, compiled functional language and an interactive theorem p
 
 **Proof roadmap** (in progress, in a separate project using Mathlib):
 
-- [ ] **n = 1:** the rounded centre of mass minimises the objective over all integer points.
+- [x] **n = 1:** the rounded centre of mass minimises the objective over all integer points.
 - [ ] **Certificate theorem:** if a result is certified, then $F^2(Q') \ge F^2(Q)$ for every polygon $Q'$ in the unit cube around it.
 - [ ] **Faithfulness:** the computed objective equals the mathematical definition above, including the exact lower-envelope integral.
 

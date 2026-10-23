@@ -39,7 +39,9 @@ def d2Sq (pts : Array Pt) (q₀ q₁ : Pt) : Rat :=
   let lenSq := dot (q₁ - q₀) (q₁ - q₀)
   segmentIntegral pts q₀ q₁ / (if lenSq == 0 then 1 else lenSq : Int)
 
-/-- The objective for `n = 1`: `F(q₀)² = D₁(P, {q₀})²`. -/
+/-- The objective function for `n = 1`: `F(q₀)² = D₁(P, {q₀})²`, the mean of `d(p, q₀)²`
+over the points `p ∈ P`, divided by `diam(P)²`. `pts` is `P`, `diam2` is `diam(P)²`, and
+`q` is the point `q₀` being scored. -/
 def objectivePoint (pts : Array Pt) (diam2 : Nat) (q : Pt) : Rat :=
   d1SqToPoint pts diam2 q
 

@@ -199,12 +199,13 @@ explanation goes to stderr.
 | 4 | malformed input (bad JSON, `n < 1`, missing-edge index out of range, negative coordinate, empty `P`) |
 | 5 | the convex hull has fewer than `n` vertices |
 
-## Proofs (plan agreed 2026-10-21; not started yet)
+## Proofs (plan agreed 2026-10-21; started 2026-10-22)
 **Layout:** a separate Lake project `proofs/` (sibling of `lean/`) that requires Mathlib
 and requires the solver package by path (`../lean`), so the theorems are about the very
 functions the executable runs, and building the solver never needs Mathlib. Both
 projects must use the same Lean toolchain (Mathlib pins one; `lean/` may need to move to
-it).
+it). Mathlib tag `v4.35.0` matches the solver's toolchain. Proof files import only the
+Mathlib modules they need (loading all of Mathlib is slow).
 
 **Layers, easiest first:**
 - *A. Warm-ups:* `roundHalfUp a b` is the nearest integer to `a/b` with halves rounded up;
@@ -212,6 +213,9 @@ it).
   `objectivePoint pts (diamSq pts) q` (equivalently `Σ_p distSq p q`) over all integer
   points `q`, for nonempty `pts` with `diam(P) > 0`. Needs only rational algebra
   (`Σ |p − q|² = k |q − c|² + const`, separately in `i` and `j`), no reals.
+  **Done** (`proofs/Proofs/Point.lean`, `objectivePoint_centreOfMassRounded_le`), with
+  no hypotheses at all: for empty `P` or `diam(P) = 0` both sides are 0, since Lean's
+  `x / 0 = 0`.
 - *B. Search guarantees, about the computed objective* (`objectivePolygon`, exact
   rationals, no analysis): the result is never worse than the start; **certificate
   theorem:** if `certified`, every polygon in the unit cube `{-1,0,1}^{2n}` around the

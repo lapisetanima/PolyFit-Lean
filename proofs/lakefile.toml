@@ -1,0 +1,17 @@
+name = "proofs"
+version = "0.1.0"
+defaultTargets = ["Proofs"]
+
+# Same Lean version as the solver (lean/lean-toolchain); Mathlib's tag must match it.
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.35.0"
+
+# The solver itself, so the theorems are about the functions the executable runs.
+[[require]]
+name = "polyfit"
+path = "../lean"
+
+[[lean_lib]]
+name = "Proofs"
