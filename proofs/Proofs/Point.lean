@@ -8,21 +8,40 @@ import PolyFit.Objective
 /-!
 # n = 1: the rounded centre of mass is optimal
 
-`F(q)² = D₁(P, {q})²` is `Σ_p d(p, q)²` divided by a constant `≥ 0`, and `Σ_p d(p, q)²` is
-a sum over the `i` coordinates plus a sum over the `j` coordinates, each depending on
-only one coordinate of `q`. In one coordinate, with `k` values `a` of sum `S`,
-`Σ (a - x)² = Σ a² - 2 S x + k x²`: a parabola in `x` with its minimum at the mean `S / k`,
-so over the integers it is smallest at the integer nearest to `S / k`.
+**Theorem.** For every integer point `q`, `F(c)² ≤ F(q)²`, where `c` is the centre of
+mass of `P` with each coordinate rounded half up.
+
+**Proof outline.**
+1. *Split the coordinates* (`sum_distSq`). `F(q)² = Σ_p d(p, q)² / (k diam(P)²)`, and
+   `Σ_p d(p, q)² = f(qᵢ) + g(qⱼ)` with `f(x) = Σ_p (pᵢ - x)²` and `g(y) = Σ_p (pⱼ - y)²`.
+   The denominator does not depend on `q`, so it suffices to minimise `f` and `g`
+   separately.
+2. *Complete the square* (`sum_sq_sub`). For `k` values `a` with sum `S` and mean `μ = S/k`,
+   `Σ (a - x)² = Σ a² - 2 S x + k x² = k (x - μ)² + const`: the further `x` is from `μ`,
+   the larger the sum.
+3. *The nearest integer wins* (`sum_sq_sub_roundHalfUp_le`). `r = roundHalfUp S k` has
+   `|r - μ| ≤ 1/2`, and every other integer is at least `1/2` from `μ`.
+4. *Assemble* (`objectivePoint_centreOfMassRounded_le`), after checking that the solver's
+   `foldl`s compute exactly these sums (`foldl_add_eq_sum`).
+
+Everything stays in `Int` and `Rat`: completing the square replaces the derivative, and
+no real numbers are needed.
 -/
 
 namespace PolyFit
 
-/-- A sum written as a `foldl`, the way the solver writes it, is a `List.sum`. -/
+/-- A sum written as a `foldl`, the way the solver writes it, is a `List.sum`.
+
+Proof: induction on `l`. `foldl` passes the running total `b + f a` on to the tail, so
+the induction hypothesis must hold for every starting total `b` (`generalizing b`). -/
 theorem foldl_add_eq_sum {α β} [AddCommMonoid β] (l : List α) (f : α → β) (b : β) :
     l.foldl (fun s a => s + f a) b = b + (l.map f).sum := by
   induction l generalizing b <;> simp [*, add_assoc]
 
-/-- `Σ (a - x)² = Σ a² - 2 x S + k x²`. -/
+/-- `Σ (a - x)² = Σ a² - 2 x S + k x²`, with `S = Σ a` and `k` the number of values.
+
+Proof: induction on the list; each step is the identity `(a - x)² = a² - 2 x a + x²`
+(`ring`). -/
 theorem sum_sq_sub (xs : List Int) (x : Int) :
     (xs.map fun a => (a - x) ^ 2).sum
       = (xs.map (· ^ 2)).sum - 2 * x * xs.sum + xs.length * x ^ 2 := by
@@ -30,8 +49,14 @@ theorem sum_sq_sub (xs : List Int) (x : Int) :
   | nil => simp
   | cons a as ih => simp [ih]; ring
 
-/-- One coordinate: `roundHalfUp S k`, the integer nearest the mean, minimises
-`Σ (a - x)²` over all integers `x`. -/
+/-- One coordinate: `r = roundHalfUp S k`, the integer nearest the mean `μ = S/k`,
+minimises `Σ (a - x)²` over all integers `x`.
+
+Proof: by `sum_sq_sub`, the difference of the two sides is
+`(x - r) (k (x + r) - 2 S) = k ((x - μ)² - (r - μ)²)`, so we show it is `≥ 0`. Integer
+division gives `2 k r ≤ 2 S + k < 2 k r + 2 k`, i.e. `|r - μ| ≤ 1/2` without fractions.
+If `x ≤ r - 1`, both factors are `≤ 0`; if `x ≥ r + 1`, both are `≥ 0`; if `x = r` the
+difference is 0. An empty list makes both sides 0. -/
 theorem sum_sq_sub_roundHalfUp_le (xs : List Int) (x : Int) :
     (xs.map fun a => (a - roundHalfUp xs.sum xs.length) ^ 2).sum
       ≤ (xs.map fun a => (a - x) ^ 2).sum := by
@@ -55,11 +80,15 @@ theorem sum_sq_sub_roundHalfUp_le (xs : List Int) (x : Int) :
       nlinarith [mul_nonneg hk (by omega : (0 : Int) ≤ x - r - 1)]
     nlinarith [mul_nonneg (sub_nonneg.2 hx.le) this]
 
-/-- `d(p, q)²` as an integer: the `toNat` in `distSq` never cuts anything off. -/
+/-- `d(p, q)²` as an integer: the `toNat` in `distSq` never cuts anything off, since
+the value is a sum of squares. -/
 theorem distSq_eq (p q : Pt) : (distSq p q : Int) = (p.i - q.i) ^ 2 + (p.j - q.j) ^ 2 :=
   Int.toNat_of_nonneg (by positivity)
 
-/-- `Σ_p d(p, q)²` split into the two coordinates. -/
+/-- `Σ_p d(p, q)²` split into the two coordinates:
+`Σ_p d(p, q)² = Σ_p (pᵢ - qᵢ)² + Σ_p (pⱼ - qⱼ)²`, as an integer converted to `Rat`.
+
+Proof: induction on the list, using `distSq_eq` for each point. -/
 theorem sum_distSq (l : List Pt) (q : Pt) :
     (l.map fun p => (distSq p q : Rat)).sum
       = (((l.map Pt.i).map fun a => (a - q.i) ^ 2).sum
@@ -71,9 +100,15 @@ theorem sum_distSq (l : List Pt) (q : Pt) :
     rw [← Int.cast_natCast, distSq_eq]
     push_cast; ring
 
+
+
 /-- **The n = 1 theorem.** The rounded centre of mass minimises the objective over all
 integer points `q`. No hypotheses are needed: if `P` is empty or `diam(P) = 0`, both
-sides divide by 0 and are 0. -/
+sides divide by 0 and are 0.
+
+Proof: write `F(x)²` as (`i` sum + `j` sum) / (`k diam(P)²`) for every `x` (`hF`), check
+that the solver's `centreOfMassRounded` is `c` (`hc`), then compare the numerators: the
+1-D lemma applies once per coordinate. -/
 theorem objectivePoint_centreOfMassRounded_le (pts : Array Pt) (q : Pt) :
     objectivePoint pts (diamSq pts) (centreOfMassRounded pts)
       ≤ objectivePoint pts (diamSq pts) q := by
