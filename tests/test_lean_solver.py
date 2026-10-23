@@ -6,13 +6,14 @@ from itertools import product
 import numpy as np
 import pytest
 
-from polyfit import FitFailed, evaluate, fit, reference, samples
+from polyfit import FitFailed, evaluate, fit, reduce_hull, reference, rough_fit, samples
 from polyfit.bridge import DEFAULT_EXE, run_solver
 
 pytestmark = pytest.mark.skipif(not DEFAULT_EXE.is_file(),
                                 reason="Lean solver not built (run `lake build` in lean/)")
 
 TWO_POINTS = [[1, 2], [3, 4]]
+DECAGON = [[0, 5], [1, 8], [3, 10], [6, 10], [9, 8], [10, 5], [9, 2], [6, 0], [3, 0], [1, 2]]  # 10 hull vertices
 
 
 @pytest.mark.parametrize("n", [1, 2, 3, 6])
@@ -22,10 +23,19 @@ def test_returns_n_integer_vertices(n):
     assert result.objective_sq is not None and result.objective_sq >= 0
 
 
-@pytest.mark.parametrize("n", [1, 2])
-def test_missing_edges_ignored_for_point_and_segment(n):
-    reply, _ = run_solver({"points": TWO_POINTS, "n": n, "missing": [0, 1, 99]})
+def test_missing_edges_ignored_for_point_and_segment():
+    reply, _ = run_solver({"points": TWO_POINTS, "n": 1, "missing": [0, 1, 99]})
     assert reply["error"] == 0
+    reply, _ = run_solver({"command": "fine_fit", "points": TWO_POINTS, "n": 2, "missing": [0, 1, 99],
+                           "start": TWO_POINTS})
+    assert reply["error"] == 0
+
+
+@pytest.mark.parametrize("n", [2, 3])
+def test_lean_fit_command_searches_only_n_1(n):
+    """For n >= 2 Python runs the pipeline; Lean's fit command alone is malformed (error 4)."""
+    reply, _ = run_solver({"points": DECAGON, "n": n, "missing": []})
+    assert reply["error"] == 4
 
 
 def random_point_sets(count=20, seed=1):
@@ -145,9 +155,9 @@ def test_segment_fit_is_exact_and_locally_optimal(pts):
 
 
 @pytest.mark.parametrize("pts", SEGMENT_FIT_SETS)
-def test_segment_fit_improves_on_farthest_pair(pts):
-    a, b = max(((p, q) for p in pts for q in pts), key=lambda pq: reference.dist_sq(*pq))
-    assert fit(pts, n_vertices=2).objective_sq <= reference.objective_segment(pts, a, b)
+def test_segment_fit_improves_on_its_rough_start(pts):
+    best_rough = rough_fit(pts, n_vertices=2, candidates=reduce_hull(pts, n_vertices=2), k=1)[0]
+    assert fit(pts, n_vertices=2).objective_sq <= best_rough.objective_sq
 
 
 def test_segment_fit_recovers_dense_straight_line():
@@ -181,12 +191,12 @@ def test_error_1_zero_diameter():
 @pytest.mark.parametrize("n, missing", [(4, [0, 1]), (4, [3, 0]), (3, [0, 2]), (6, [1, 3, 4])])
 def test_error_2_consecutive_missing(n, missing):
     with pytest.raises(FitFailed) as info:
-        fit(TWO_POINTS, n_vertices=n, missing_edges=missing)
+        fit(DECAGON, n_vertices=n, missing_edges=missing)
     assert info.value.code == 2
 
 
 def test_non_consecutive_missing_ok():
-    assert fit(TWO_POINTS, n_vertices=6, missing_edges=[0, 2, 4]).vertices.shape == (6, 2)
+    assert fit(DECAGON, n_vertices=6, missing_edges=[0, 2, 4]).vertices.shape == (6, 2)
 
 
 @pytest.mark.parametrize("request_json", [

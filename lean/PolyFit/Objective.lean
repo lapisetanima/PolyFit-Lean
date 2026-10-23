@@ -65,13 +65,14 @@ deriving Inhabited
 def edgeTerms (pts : Array Pt) (a b : Pt) : EdgeTerms :=
   ⟨pts.map (distSqToSegment · a b), d2Sq pts a b⟩
 
+/-- `d₁(p, Q)² = min over present edges of d₁(p, ℓ)²` for the point number `idx`. -/
+def nearestSq (edges : Array EdgeTerms) (idx : Nat) : Rat :=
+  edges.foldl (init := edges[0]!.distSqs[idx]!) fun best e => min best e.distSqs[idx]!
+
 /-- `F²` from the pieces of the present edges (at least one):
-`½ D₁(P, Q)² + (1 / (2m)) Σ D₂(ℓ, P)²`, where `m` is the number of present edges and
-`d₁(p, Q)² = min over present edges of d₁(p, ℓ)²` for each point. -/
+`½ D₁(P, Q)² + (1 / (2m)) Σ D₂(ℓ, P)²`, where `m` is the number of present edges. -/
 def objectiveFromEdges (numPts diam2 : Nat) (edges : Array EdgeTerms) : Rat :=
-  let nearest (idx : Nat) := edges.foldl (init := edges[0]!.distSqs[idx]!) fun best e =>
-    min best e.distSqs[idx]!
-  let d1Sq := (List.range numPts).foldl (init := 0) (· + nearest ·) / (numPts * diam2 : Nat)
+  let d1Sq := (List.range numPts).foldl (init := 0) (· + nearestSq edges ·) / (numPts * diam2 : Nat)
   let d2Total := edges.foldl (init := 0) (· + ·.d2)
   d1Sq / 2 + d2Total / (2 * edges.size : Nat)
 
@@ -81,22 +82,21 @@ sum is being added up point by point. Every term is `≥ 0`, so a `none` answer 
 the true value really is `≥ bound`; a `some` answer is exactly `objectiveFromEdges`.
 Used by the rough fit to skip polygons that cannot make the top `k`. -/
 def objectiveBelow (numPts diam2 : Nat) (edges : Array EdgeTerms) (bound : Option Rat) :
-    Option Rat := Id.run do
+    Option Rat :=
   let d2Part := edges.foldl (init := (0 : Rat)) (· + ·.d2) / (2 * edges.size : Nat)
   let scale : Rat := (2 * numPts * diam2 : Nat)    -- F² = d1Total / scale + d2Part
   -- F² ≥ bound exactly when d1Total ≥ (bound - d2Part) * scale, computed once here.
   let limit := bound.map fun b => (b - d2Part) * scale
-  if let some l := limit then
-    if l ≤ 0 then return none
-  let mut d1Total : Rat := 0
-  for idx in [0:numPts] do
-    let mut nearest := edges[0]!.distSqs[idx]!
-    for e in edges do
-      if e.distSqs[idx]! < nearest then nearest := e.distSqs[idx]!
-    d1Total := d1Total + nearest
-    if let some l := limit then
-      if d1Total ≥ l then return none
-  return some (d1Total / scale + d2Part)
+  if limit.any (· ≤ 0) then none
+  else (go limit numPts 0 0).map (· / scale + d2Part)
+where
+  /-- Add `d₁(p, Q)²` for the `left` points numbered from `idx` on to `total`, giving up
+  (`none`) as soon as the total reaches `limit`. -/
+  go (limit : Option Rat) : Nat → Nat → Rat → Option Rat
+    | 0, _, total => some total
+    | left + 1, idx, total =>
+      let total := total + nearestSq edges idx
+      if limit.any (· ≤ total) then none else go limit left (idx + 1) total
 
 /-- The present edges of an `n`-gon with the edges in `missing` absent. A segment
 (`n = 2`) has the single edge 0. -/

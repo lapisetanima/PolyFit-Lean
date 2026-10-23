@@ -129,18 +129,29 @@ def fit(points, *, n_vertices: int, missing_edges=(), engine: str = "lean",
     """
     Fit a polygon with `n_vertices` vertices to `points`.
 
-    engine="lean" runs the Lean executable; engine="mock" uses the rough geometric baseline in
-    polyfit.mock (the most equal-edged polygon on the reduced hull, scored by a Lean query).
-    
+    engine="lean" runs the Lean executable: for n = 1 the rounded centre of mass; for n >= 2
+    the pipeline reduce_hull -> rough_fit -> fine_fit (the same steps PointSet.fit records).
+    engine="mock" uses the rough geometric baseline in polyfit.mock (the most equal-edged
+    polygon on the reduced hull, scored by a Lean query).
+
     Raises FitFailed if the solver reports an error code.
     """
     request = make_request(points, n_vertices=n_vertices, missing_edges=missing_edges)
-    if engine == "lean":
-        return solve_request(request, exe=exe, timeout=timeout)
     if engine == "mock":
         from .mock import solve_mock
         return solve_mock(request, exe=exe, timeout=timeout)
-    raise ValueError(f"unknown engine {engine!r}")
+    if engine != "lean":
+        raise ValueError(f"unknown engine {engine!r}")
+    if request.n_vertices == 1:
+        return solve_request(request, exe=exe, timeout=timeout)
+
+    # n >= 2: candidate vertices, the best polygon on them, then the local search from it.
+    common = dict(n_vertices=request.n_vertices, missing_edges=request.missing_edges,
+                  exe=exe, timeout=timeout)
+    candidates = reduce_hull(request.points, n_vertices=request.n_vertices, exe=exe, timeout=timeout)
+    best_rough = rough_fit(request.points, candidates=candidates, k=1, **common)[0]
+    result, _moves, _certified = fine_fit(request.points, start=best_rough.vertices, **common)
+    return result
 
 
 def _checked(reply: dict, stderr: str) -> dict:

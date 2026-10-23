@@ -30,12 +30,6 @@ def diamSq (pts : Array Pt) : Nat :=
   pts.foldl (init := 0) fun best p =>
     pts.foldl (init := best) fun best q => max best (distSq p q)
 
-/-- The two points of `P` realising `diam(P)` (the first such pair found). -/
-def farthestPair (pts : Array Pt) : Pt × Pt :=
-  pts.foldl (init := (pts[0]!, pts[0]!)) fun best p =>
-    pts.foldl (init := best) fun best q =>
-      if distSq p q > distSq best.1 best.2 then (p, q) else best
-
 /-- `d₁(p, ℓ)²` for the segment `ℓ` from `q₀` to `q₁`. With `v = q₁ - q₀` and
 `w = p - q₀`, the projection of `p` onto the line has parameter `t = (w · v) / L²`:
 if `t ≤ 0` the nearest point is `q₀`, if `t ≥ 1` it is `q₁`, and otherwise the

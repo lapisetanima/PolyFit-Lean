@@ -94,19 +94,6 @@ def test_attempt_records_every_pipeline_step(n, missing):
     assert a.objective_sq == evaluate(ps.points, vertices=a.vertices, missing_edges=missing).objective_sq
 
 
-def test_segment_search_from_farthest_pair_matches_old_segment_search():
-    """The general search, for n = 2, is the segment search: same moves, same order."""
-    from polyfit.bridge import fine_fit
-    from polyfit import fit
-    for make in (samples.noisy_segment, samples.blob, samples.triangle_outline):
-        pts = make(keep=1.0)
-        a, b = max(((p, q) for p in pts for q in pts), key=lambda pq: reference.dist_sq(*pq))
-        result, _, certified = fine_fit(pts, n_vertices=2, start=[a, b])
-        old = fit(pts, n_vertices=2)
-        assert result.vertices.tolist() == old.vertices.tolist()
-        assert result.objective_sq == old.objective_sq and certified
-
-
 def test_large_n_skips_certification():
     ps = PointSet.from_points(samples.hexagon_outline(keep=1.0))
     a = ps.fit(n_vertices=8)

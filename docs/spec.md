@@ -81,12 +81,17 @@ it relies on (such as `diam(P)`) rather than trusting values from Python.
    **Implemented for all n ≥ 2 (agreed 2026-10-20; Lean `Polish.lean`)** as two
    alternating searches from the best rough fit, sharing one fuel budget of 1,000
    accepted moves:
-   - *Fine:* pattern search, best improvement, steps from about `diam/4` halving to 1.
-     Moves: for each edge (present or missing), its two endpoints by `s·δ` each,
+   - *Fine:* best-improvement local search with step size 1 (see below).
+     Moves: for each edge (present or missing), its two endpoints by `δ` each,
      `δ ∈ {-1,0,1}²` (80 per edge, including moving just one endpoint); for `n ≥ 3`
-     also translating the whole polygon (8). For `n = 2` these are exactly the 80
-     segment moves in the old order, so segment results are unchanged.
-   - *Ultra-fine:* at step 1, the whole cube: all `n` vertices moved by `δ_v ∈ {-1,0,1}²`
+     also translating the whole polygon (8). For `n = 2` these are the 80 moves of
+     the two endpoints.
+   - *Step size 1 only (decided 2026-10-23):* the fine and ultra-fine searches stay in
+     the basin the rough fit chose; choosing the basin is the rough fit's job. Large
+     steps (from about `diam/4`, halving) were tried and found a lower `F²` in 12 of 39
+     notebook fits with n ≥ 3 (up to 3× lower), against 5 the other way: evidence that
+     the rough fit does not always pick the best basin. Improving it is deferred.
+   - *Ultra-fine:* the whole cube: all `n` vertices moved by `δ_v ∈ {-1,0,1}²`
      at once (`9ⁿ − 1` candidates). If one is better, take the best and run the fine
      search again; if none is, the result is **certified**: no polygon in the unit
      cube around it has a lower `F²`. Skipped for `n > 7` (then not certified); for
@@ -98,8 +103,10 @@ it relies on (such as `diam(P)`) rather than trusting values from Python.
      only 81 versions, precomputed, and each candidate is first tested with
      whole-number lower bounds (`⌊1024·d⌋`), so only near-winners are scored exactly.
      Typical times: 0.3–4 s for n = 3…7 (n = 7 was 55 s before the lower bounds).
-   - *Proof target:* termination (bounded loops with fuel); the result is never worse
-     than the start; if certified, `F²(Q') ≥ F²(result)` for every `Q'` in the unit cube.
+   - *Proof target:* termination (structural recursion on fuel or round counters; since
+     2026-10-23 `polish` and everything it calls has no mutable variables, with replies
+     identical to the earlier loops); the result is never worse than the start; if
+     certified, `F²(Q') ≥ F²(result)` for every `Q'` in the unit cube.
 
 **Recorded in each `FitAttempt`** (agreed 2026-10-20: only the rough fits and the final
 result, not the intermediate fine fit; Python `polyfit/attempt.py`): `k`,
@@ -121,8 +128,8 @@ small polygons get no advantage); ties go to the first subset. Lengths are float
 chosen polygon is then scored with its exact `F²` by a Lean `evaluate` query.
 
 *Effect on the fooling example:* the hull candidates include the diagonal's ends, so
-the segment search now starts in the right basin and finds `F² = 0.0117` (was 0.0264
-from the farthest pair).
+the local search from the rough fit starts in the right basin and finds `F² = 0.0117`
+(0.0264 from the farthest pair, the old segment start).
 
 *Rough-fit speed-up (exact):* a candidate polygon is abandoned as soon as it is certain
 not to make the top `k` (first by its `D₂` part alone, then while its `D₁` sum is added
@@ -153,11 +160,9 @@ can be saved to and loaded from JSON. Everything is recorded exactly (`F²`, not
   top-`K` rough fits, fine fit with converged flag) will be added as those commands exist.
 
 ## Search strategy
-**Segment (n = 2), agreed:** start from the farthest pair of points in `P`. At step size `s`
-(powers of 2, large to small, ending at 1), try all 80 moves that shift each endpoint by
-`s · (δi, δj)` with `δ ∈ {-1, 0, 1}²` (both endpoints at once, not both zero); take the best,
-if it strictly lowers `F²`. Fuel: at most 1,000 accepted moves. Target theorem: the
-result is a local minimum over this whole neighbourhood at step 1.
+**Segment (n = 2):** since 2026-10-23 the same pipeline as for polygons (reduced hull,
+rough fit, fine fit; see above). The earlier separate segment search, which started from
+the farthest pair of points, was removed: a poor start, and the notebooks never used it.
 
 *Observed property of the objective:* for points evenly spaced with gap `g` along a
 segment of length `L₀`, extending the segment by `e` at each end gives
@@ -180,11 +185,15 @@ vertices, for any `n`. A zero-length edge gives error 3. Python:
 `polyfit.evaluate(points, vertices=…, missing_edges=…)`.
 
 **Commands** (`"command"` field; without it, a fit or evaluation):
+- no command: a search only for `n = 1` (error 4 for `n ≥ 2`; Python's `polyfit.fit` runs
+  `reduce_hull` → `rough_fit` → `fine_fit` itself), or evaluate mode for any `n`.
 - `describe`: `{points}` → `com`, `diam_sq`, `inner_radius_sq`, `outer_radius_sq`, `hull`.
 - `reduce_hull`: `{points, n}` (n ≥ 2) → `{"candidates": [[i, j], ...]}`.
 - `rough_fit`: `{points, n, missing, candidates, k}` (n ≥ 2, distinct candidates, k ≥ 1,
   default 2) → `{"rough_fits": [{"poly_points": …, "objective_function": [a, b]}, …]}`,
   best first.
+- `fine_fit`: `{points, n, missing, start}` (n ≥ 2, `start` has n vertices) → the usual
+  reply plus `"moves"` and `"certified"`.
 
 Reply on stdout: `{"error": e, "objective_function": [a, b], "poly_points": [[i, j], ...]}`,
 where `F² = a / b`. When `e ≠ 0` the other two fields are `null`, and a human-readable
@@ -222,6 +231,9 @@ Mathlib modules they need (loading all of Mathlib is slow).
   result has `objectivePolygon` ≥ the result's. Needs lemmas for the speed-ups:
   `objectiveBelow = none` ⇒ value ≥ bound; the `⌊1024·d⌋` lower bounds are lower bounds;
   cached `EdgeTerms` equal recomputed ones.
+  **Next (2026-10-23):** these theorems for `polish`, which covers n = 2 as well (the
+  separate segment search was removed). `polish` and everything it calls are now
+  structural recursion, so they can be proved by induction.
 - *C. The computed objective equals the mathematical one* (Mathlib reals and integrals):
   `distSqToSegment` = `inf_{t∈[0,1]} |q(t) − p|²`; `segmentIntegral` = `∫₀¹ min_p |q(t) − p|² dt`
   (correctness of the lower-envelope walk); hence `objectivePolygon` = `F²` of this spec.
