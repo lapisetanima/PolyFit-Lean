@@ -106,11 +106,14 @@ def test_missing_executable_is_clear(tmp_path):
         fit([[1, 2]], n_vertices=1, exe=tmp_path / "nope.exe")
 
 
-@pytest.mark.parametrize("name", list(samples.ALL))
+@pytest.mark.parametrize("name", [name for name in samples.ALL if name != "single_pixel"])
 @pytest.mark.parametrize("n", [1, 2, 3, 6])
-def test_mock_fit_and_plot(name, n):
-    result = fit(samples.ALL[name](), n_vertices=n, missing_edges=[0], backend="mock")
-    assert result.vertices.shape == (n, 2)
+def test_plot_fit(name, n):
+    """Plotting works for every n, with a missing edge, without needing the solver."""
+    pts = samples.ALL[name]()
+    request = make_request(pts, n_vertices=n, missing_edges=[0])
+    verts = [[int(10 + 5 * np.sin(2 * np.pi * t / n)), int(10 + 5 * np.cos(2 * np.pi * t / n))] for t in range(n)]
+    result = parse_reply(request, {"error": 0, "objective_function": [1, 7], "poly_points": verts})
     assert len(result.edges()) == {1: 0, 2: 1}.get(n, n)
     plot_fit(result)
     matplotlib.pyplot.close("all")

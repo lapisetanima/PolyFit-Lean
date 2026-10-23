@@ -102,17 +102,17 @@ class PointSet:
             hull=read_only(reply["hull"]),
         )
 
-    def find_attempt(self, *, n_vertices: int, missing_edges=(), backend: str = "lean",
+    def find_attempt(self, *, n_vertices: int, missing_edges=(), engine: str = "lean",
                      k: int = 2) -> FitAttempt | None:
         """The recorded attempt with these characteristics, or None. The missing edges
         are compared as the solver uses them (sorted, duplicates removed, and ignored
         for n <= 2), so [3, 1, 3] matches [1, 3]; k counts only where there is a rough
         fit (Lean, n >= 2)."""
         key = normalised_settings(self.points, n_vertices=n_vertices, missing_edges=missing_edges,
-                                  backend=backend, k=k)
+                                  engine=engine, k=k)
         return next((a for a in self.attempts if a.key == key), None)
 
-    def fit(self, *, n_vertices: int, missing_edges=(), backend: str = "lean", k: int = 2,
+    def fit(self, *, n_vertices: int, missing_edges=(), engine: str = "lean", k: int = 2,
             exe=None, timeout: float = 600.0) -> FitAttempt:
         """Fit a polygon to these points through the pipeline (reduced hull, the best k
         rough fits, fine fit; see FitAttempt), record the attempt in `self.attempts`,
@@ -120,11 +120,11 @@ class PointSet:
         is already recorded, nothing runs and that attempt is returned instead.
         A failed step raises (FitFailed or FitInputError) and records nothing."""
         existing = self.find_attempt(n_vertices=n_vertices, missing_edges=missing_edges,
-                                     backend=backend, k=k)
+                                     engine=engine, k=k)
         if existing is not None:
             return existing
         attempt = run_attempt(self.points, n_vertices=n_vertices, missing_edges=missing_edges,
-                              backend=backend, k=k, exe=exe, timeout=timeout)
+                              engine=engine, k=k, exe=exe, timeout=timeout)
         self.attempts.append(attempt)
         return attempt
 
@@ -182,7 +182,7 @@ class PointSet:
             )
             keys = [a.key for a in ps.attempts]
             if len(set(keys)) != len(keys):
-                raise ValueError("two attempts have the same characteristics (n, missing edges, backend, k)")
+                raise ValueError("two attempts have the same characteristics (n, missing edges, engine, k)")
         except SavedDataError:
             raise
         except (KeyError, TypeError, ValueError, ZeroDivisionError) as err:
@@ -206,7 +206,7 @@ class PointSet:
         for idx, a in enumerate(self.attempts):
             try:
                 replay = run_attempt(self.points, n_vertices=a.n_vertices, missing_edges=a.missing_edges,
-                                     backend=a.backend, k=a.k if a.k is not None else 2, exe=exe)
+                                     engine=a.engine, k=a.k if a.k is not None else 2, exe=exe)
             except (FitFailed, FitInputError) as err:
                 raise SavedDataError(f"attempt {idx} cannot be replayed: {err}") from err
             saved, again = a.outcome(), replay.outcome()

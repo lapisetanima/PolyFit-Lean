@@ -17,7 +17,9 @@ How the final result was obtained is recorded in `fine_method`:
 - "centre_of_mass": n = 1 (no hull, rough fit or search; the rounded centre of mass is
   optimal),
 - "local_search": n >= 2, the fine and ultra-fine searches,
-- "mock": the pure-Python placeholder backend (no hull, rough fit or search).
+- "mock": the rough geometric baseline in polyfit/mock.py: the most equal-edged polygon
+  on the reduced hull (recorded in `reduced_hull`; no rough fit or search), scored with
+  its exact F^2 by a Lean query.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ from . import bridge
 from ._saved import SavedDataError, fraction, fraction_pair, int_pairs, read_only, strict_int, strict_number
 from .problem import FitResult, make_request
 
-BACKENDS = ("lean", "mock")
+ENGINES = ("lean", "mock")
 FINE_METHODS = ("centre_of_mass", "local_search", "mock")
 
 
@@ -53,18 +55,21 @@ class ScoredPolygon:
 
 @dataclass(frozen=True, eq=False)
 class FitAttempt:
-    n_vertices: int
-    missing_edges: tuple[int, ...]      # as the solver used them: sorted, unique, () for n <= 2
-    backend: str                        # "lean" or "mock"
-    k: int | None                       # rough fits kept; None when there is no rough fit
-    reduced_hull: np.ndarray | None     # (m, 2) candidate vertices, or None (n = 1, mock)
-    rough_fits: tuple[ScoredPolygon, ...]
-    fine_method: str
-    certified: bool | None              # local_search only: a certified local minimum?
-    vertices: np.ndarray                # the final result: (n_vertices, 2) int64, read-only
-    objective_sq: Fraction | None       # its exact F^2; None only for the mock backend
-    started_at: str                     # local time the attempt started, ISO 8601
-    duration_s: float                   # wall-clock seconds, including starting solver processes
+    """
+    FitAttmept records the information obtained from the fitting engine (either the "Lean" or the "Mock" engine)
+    """
+    n_vertices: int                       # number of vertices the polygon has
+    missing_edges: tuple[int, ...]        # as the solver used them: sorted, unique. Empty when n <= 2
+    engine: str                           # "lean" or "mock"
+    k: int | None                         # number of rough fits kept. None when the request is not for a rough fit
+    reduced_hull: np.ndarray | None       # (m, 2) candidate vertices, or None (n = 1)
+    rough_fits: tuple[ScoredPolygon, ...] # list of rough_fit candidates, in order of increasing objective function (best is first)
+    fine_method: str                      # either fine or ultrafine
+    certified: bool | None                # local_search only: a certified local minimum? (certification only if ultrafine)
+    vertices: np.ndarray                  # the final result: (n_vertices, 2) int64, read-only
+    objective_sq: Fraction | None         # its exact F^2 (None only in mock attempts saved before mock was scored)
+    started_at: str                       # local time the attempt started, ISO 8601
+    duration_s: float                     # wall-clock seconds, including starting solver processes
 
     @property
     def objective(self) -> float | None:
@@ -75,7 +80,7 @@ class FitAttempt:
     def key(self) -> tuple:
         """The characteristics that identify an attempt: two attempts with the same key
         are the same fit, so a PointSet keeps only one."""
-        return (self.n_vertices, self.missing_edges, self.backend, self.k)
+        return (self.n_vertices, self.missing_edges, self.engine, self.k)
 
     def as_result(self, points) -> FitResult:
         """This attempt's fine fit as a FitResult for the given points (for plot_fit)."""
@@ -93,7 +98,7 @@ class FitAttempt:
         return {
             "n_vertices": self.n_vertices,
             "missing_edges": list(self.missing_edges),
-            "backend": self.backend,
+            "engine": self.engine,
             "k": self.k,
             "reduced_hull": None if self.reduced_hull is None else self.reduced_hull.tolist(),
             "rough_fits": [r.to_dict() for r in self.rough_fits],
@@ -117,9 +122,9 @@ class FitAttempt:
             if list(missing) != sorted(set(missing)) or any(not 0 <= m < n for m in missing) \
                     or (n <= 2 and missing):
                 raise ValueError(f"missing_edges {list(missing)} are not valid for n = {n}")
-            backend = d["backend"]
-            if backend not in BACKENDS:
-                raise ValueError(f"unknown backend {backend!r}")
+            engine = d["engine"]
+            if engine not in ENGINES:
+                raise ValueError(f"unknown engine {engine!r}")
             k = None if d["k"] is None else strict_int(d["k"])
             reduced_hull = None if d["reduced_hull"] is None else int_pairs(d["reduced_hull"])
             if not isinstance(d["rough_fits"], list):
@@ -139,7 +144,7 @@ class FitAttempt:
             if len(vertices) != n:
                 raise ValueError(f"expected {n} vertices, got {len(vertices)}")
             objective_sq = None if d["objective_sq"] is None else fraction(d["objective_sq"])
-            if objective_sq is None and backend != "mock":
+            if objective_sq is None and engine != "mock":
                 raise ValueError("only mock attempts may lack an objective")
             if objective_sq is not None and objective_sq < 0:
                 raise ValueError(f"objective_sq must be >= 0, got {objective_sq}")
@@ -150,34 +155,36 @@ class FitAttempt:
                 raise ValueError(f"duration_s must be >= 0, got {duration_s}")
         except (KeyError, TypeError, ValueError, ZeroDivisionError) as err:
             raise SavedDataError(f"not a valid saved FitAttempt: {type(err).__name__}: {err}") from err
-        return cls(n, missing, backend, k, reduced_hull, rough_fits, fine_method, certified,
+        return cls(n, missing, engine, k, reduced_hull, rough_fits, fine_method, certified,
                    vertices, objective_sq, started_at, duration_s)
 
 
-def normalised_settings(points, *, n_vertices: int, missing_edges=(), backend: str = "lean",
+def normalised_settings(points, *, n_vertices: int, missing_edges=(), engine: str = "lean",
                         k: int = 2) -> tuple:
     """An attempt's key, from the arguments of PointSet.fit: the missing edges as the
     solver uses them, and k only where there is a rough fit (Lean, n >= 2)."""
-    if backend not in BACKENDS:
-        raise ValueError(f"unknown backend {backend!r}")
+    if engine not in ENGINES:
+        raise ValueError(f"unknown engine {engine!r}")
     request = make_request(points, n_vertices=n_vertices, missing_edges=missing_edges)
-    has_rough = backend == "lean" and request.n_vertices >= 2
-    return (request.n_vertices, request.missing_edges, backend, k if has_rough else None)
+    has_rough = engine == "lean" and request.n_vertices >= 2
+    return (request.n_vertices, request.missing_edges, engine, k if has_rough else None)
 
 
-def run_attempt(points, *, n_vertices: int, missing_edges=(), backend: str = "lean", k: int = 2,
+def run_attempt(points, *, n_vertices: int, missing_edges=(), engine: str = "lean", k: int = 2,
                 exe=None, timeout: float = 600.0) -> FitAttempt:
     """Run the whole pipeline on `points` and return the completed attempt (not recorded
     anywhere; PointSet.fit does that). A failed step raises FitFailed or FitInputError."""
-    n, missing, backend, k = normalised_settings(points, n_vertices=n_vertices, missing_edges=missing_edges,
-                                                 backend=backend, k=k)
+    n, missing, engine, k = normalised_settings(points, n_vertices=n_vertices, missing_edges=missing_edges,
+                                                engine=engine, k=k)
     started_at = datetime.now().astimezone().isoformat(timespec="seconds")
     clock = time.perf_counter()
     reduced_hull, rough_fits, certified = None, (), None
     common = dict(n_vertices=n, missing_edges=missing, exe=exe, timeout=timeout)
 
-    if backend == "mock":
-        fine = bridge.fit(points, backend="mock", **common)
+    if engine == "mock":
+        from .mock import mock_fit
+        fine, mock_hull = mock_fit(points, **common)
+        reduced_hull = None if mock_hull is None else read_only(mock_hull)
         method = "mock"
     elif n == 1:
         fine = bridge.fit(points, **common)
@@ -189,5 +196,5 @@ def run_attempt(points, *, n_vertices: int, missing_edges=(), backend: str = "le
         fine, _moves, certified = bridge.fine_fit(points, start=rough_fits[0].vertices, **common)
         method = "local_search"
 
-    return FitAttempt(n, missing, backend, k, reduced_hull, rough_fits, method, certified,
+    return FitAttempt(n, missing, engine, k, reduced_hull, rough_fits, method, certified,
                       read_only(fine.vertices), fine.objective_sq, started_at, time.perf_counter() - clock)

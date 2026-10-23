@@ -23,7 +23,7 @@ def ps():
 def test_fit_records_a_frozen_attempt(ps):
     attempt = ps.fit(n_vertices=2)
     assert ps.attempts == [attempt]
-    assert attempt.n_vertices == 2 and attempt.backend == "lean"
+    assert attempt.n_vertices == 2 and attempt.engine == "lean"
     assert attempt.objective_sq == reference.objective_segment(ps.points, *attempt.vertices)
     assert attempt.duration_s > 0
     datetime.fromisoformat(attempt.started_at)
@@ -36,8 +36,8 @@ def test_fit_records_a_frozen_attempt(ps):
 def test_attempts_accumulate_in_order(ps):
     ps.fit(n_vertices=1)
     ps.fit(n_vertices=2)
-    ps.fit(n_vertices=3, backend="mock")
-    assert [(a.n_vertices, a.backend) for a in ps.attempts] == [(1, "lean"), (2, "lean"), (3, "mock")]
+    ps.fit(n_vertices=3, engine="mock")
+    assert [(a.n_vertices, a.engine) for a in ps.attempts] == [(1, "lean"), (2, "lean"), (3, "mock")]
 
 
 def test_repeated_fit_reuses_the_recorded_attempt(ps, tmp_path):
@@ -54,25 +54,25 @@ def test_repeated_fit_reuses_the_recorded_attempt(ps, tmp_path):
     (dict(n_vertices=1), dict(n_vertices=1, missing_edges=[0])),
 ])
 def test_same_characteristics_after_normalising(ps, first, second):
-    a = ps.fit(backend="mock", **first)
-    assert ps.fit(backend="mock", **second) is a
+    a = ps.fit(engine="mock", **first)
+    assert ps.fit(engine="mock", **second) is a
     assert len(ps.attempts) == 1
 
 
 def test_different_characteristics_are_separate_attempts(ps):
     ps.fit(n_vertices=2)
-    ps.fit(n_vertices=2, backend="mock")
-    ps.fit(n_vertices=3, backend="mock")
-    ps.fit(n_vertices=4, missing_edges=[1], backend="mock")
-    ps.fit(n_vertices=4, missing_edges=[2], backend="mock")
+    ps.fit(n_vertices=2, engine="mock")
+    ps.fit(n_vertices=3, engine="mock")
+    ps.fit(n_vertices=4, missing_edges=[1], engine="mock")
+    ps.fit(n_vertices=4, missing_edges=[2], engine="mock")
     assert len(ps.attempts) == 5
-    assert ps.find_attempt(n_vertices=4, missing_edges=[2], backend="mock") is ps.attempts[-1]
+    assert ps.find_attempt(n_vertices=4, missing_edges=[2], engine="mock") is ps.attempts[-1]
     assert ps.find_attempt(n_vertices=5) is None
 
 
 def test_running_the_same_plans_twice_changes_nothing():
     point_sets, _ = build_point_sets({"a": samples.blob(), "b": samples.noisy_segment()})
-    plans = {"a": [dict(n_vertices=2), dict(n_vertices=3, backend="mock")], "b": [dict(n_vertices=1)]}
+    plans = {"a": [dict(n_vertices=2), dict(n_vertices=3, engine="mock")], "b": [dict(n_vertices=1)]}
     attempt_fits(point_sets, plans)
     before = {name: list(ps.attempts) for name, ps in point_sets.items()}
     attempt_fits(point_sets, plans)
@@ -115,9 +115,12 @@ def test_large_n_skips_certification():
 
 
 def test_point_and_mock_attempts_have_no_rough_fit(ps):
-    for a in (ps.fit(n_vertices=1), ps.fit(n_vertices=4, backend="mock")):
-        assert a.reduced_hull is None and a.rough_fits == () and a.k is None
-    assert [a.fine_method for a in ps.attempts] == ["centre_of_mass", "mock"]
+    for a in (ps.fit(n_vertices=1), ps.fit(n_vertices=4, engine="mock")):
+        assert a.rough_fits == () and a.k is None and a.certified is None
+    point, mock = ps.attempts
+    assert [point.fine_method, mock.fine_method] == ["centre_of_mass", "mock"]
+    assert point.reduced_hull is None
+    assert mock.reduced_hull.tolist() == reduce_hull(ps.points, n_vertices=4).tolist()
 
 
 def test_k_is_part_of_the_characteristics(ps):
@@ -177,7 +180,7 @@ def test_attempt_fits_stops_a_point_set_at_its_first_failure():
 def test_attempts_are_saved_and_verified_on_load(ps):
     ps.fit(n_vertices=1)
     ps.fit(n_vertices=2)
-    ps.fit(n_vertices=4, backend="mock")
+    ps.fit(n_vertices=4, engine="mock")
     loaded = PointSet.from_dict(ps.to_dict())
     assert [a.to_dict() for a in loaded.attempts] == [a.to_dict() for a in ps.attempts]
     assert all(isinstance(a, FitAttempt) for a in loaded.attempts)
@@ -199,7 +202,7 @@ def _saved_with_one_attempt():
     ("n_vertices", 2.0),
     ("n_vertices", 0),
     ("missing_edges", [1]),                     # not allowed for a segment
-    ("backend", "magic"),
+    ("engine", "magic"),
     ("vertices", [[0, 0]]),                     # wrong number of vertices
     ("vertices", [[0, 0], [1, 2.5]]),
     ("objective_sq", None),                     # only mock attempts may lack it

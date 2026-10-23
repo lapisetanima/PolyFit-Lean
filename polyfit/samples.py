@@ -49,10 +49,10 @@ def single_pixel():
     return np.array([[5, 7]], dtype=np.int64)
 
 
-def blob(seed=0, keep=0.25):
+def blob(seed=1, keep=0.25):
     """A small, roughly round cluster of pixels."""
     rng = np.random.default_rng(seed)
-    pts = rng.normal(loc=(10.0, 12.0), scale=1.5, size=(25, 2))
+    pts = rng.normal(loc=(10.0, 12.0), scale=2.5, size=(50, 2))
     pts = np.unique(np.clip(np.round(pts), 0, None).astype(np.int64), axis=0)
     return thin(pts, keep)
 

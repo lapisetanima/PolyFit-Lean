@@ -64,7 +64,15 @@ def find_executable(exe: str | os.PathLike | None = None) -> Path:
 
 
 def run_solver(request_json: dict, exe=None, timeout: float = 60.0) -> tuple[dict, str]:
-    """Send one request to the executable; return (parsed reply, stderr text)."""
+    """
+        run_solver is how Python talks to the Lean engine. One request is sent, with instructions in request_json.
+        
+        "request_json" contains the "command" and any necessary data (such as the rough-fit polygon if the command is to find a fine fit)
+
+        returns: parsed reply, stderr text
+        "parsed reply" is some JSON with any error code, along with the requested information (a rough fit, a fine fit, a query, etc)
+        "stderr text" is a human-readable error description, if there is any error
+    """
     path = find_executable(exe)
     try:
         proc = subprocess.run(
@@ -116,24 +124,23 @@ def parse_reply(request: FitRequest, reply: dict, stderr: str = "") -> FitResult
     return FitResult(request=request, vertices=vertices.astype(np.int64), objective_sq=objective_sq)
 
 
-def fit(points, *, n_vertices: int, missing_edges=(), backend: str = "lean",
+def fit(points, *, n_vertices: int, missing_edges=(), engine: str = "lean",
         exe=None, timeout: float = 60.0) -> FitResult:
-    """Fit a polygon with `n_vertices` vertices to `points`.
+    """
+    Fit a polygon with `n_vertices` vertices to `points`.
 
-    Everything after `points` must be passed by keyword, e.g.
-    `fit(pts, n_vertices=4, missing_edges=[3])`.
-
-    backend="lean" runs the Lean executable; backend="mock" uses the
-    pure-Python placeholder in polyfit.mock (for testing plots and plumbing).
+    engine="lean" runs the Lean executable; engine="mock" uses the rough geometric baseline in
+    polyfit.mock (the most equal-edged polygon on the reduced hull, scored by a Lean query).
+    
     Raises FitFailed if the solver reports an error code.
     """
     request = make_request(points, n_vertices=n_vertices, missing_edges=missing_edges)
-    if backend == "lean":
+    if engine == "lean":
         return solve_request(request, exe=exe, timeout=timeout)
-    if backend == "mock":
+    if engine == "mock":
         from .mock import solve_mock
-        return solve_mock(request)
-    raise ValueError(f"unknown backend {backend!r}")
+        return solve_mock(request, exe=exe, timeout=timeout)
+    raise ValueError(f"unknown engine {engine!r}")
 
 
 def _checked(reply: dict, stderr: str) -> dict:

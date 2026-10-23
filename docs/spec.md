@@ -106,9 +106,19 @@ result, not the intermediate fine fit; Python `polyfit/attempt.py`): `k`,
 `reduced_hull`, `rough_fits` (top `k`, each with exact `F²`), `fine_method`
 (`centre_of_mass` for n = 1, `local_search` for n ≥ 2, `mock`), `certified`
 (local_search only), and the final `vertices` and `objective_sq`. An attempt's
-characteristics are `(n, missing edges, backend, k)`, with `k` only where there is a
+characteristics are `(n, missing edges, engine, k)`, with `k` only where there is a
 rough fit. Loading a saved `PointSet` replays every attempt and requires the same
 results (everything but the timing).
+
+**The `mock` engine (agreed 2026-10-22; Python `polyfit/mock.py`)** is a rough,
+purely geometric baseline that does not optimise `F`. Candidates: the reduced hull from
+Lean's `reduce_hull` (so error 5 if the hull has fewer than `n` vertices), recorded in
+the attempt's `reduced_hull`. n = 1: the rounded centre of mass. n = 2: the two
+candidates farthest apart. n ≥ 3: among all `n`-subsets of the candidates in hull order
+(so convex), the one whose edge lengths are most nearly equal, minimising
+`Σ_i (ℓ_i − mean ℓ)² / (mean ℓ)²` over all `n` edges, missing or not (scale-free, so
+small polygons get no advantage); ties go to the first subset. Lengths are floats. The
+chosen polygon is then scored with its exact `F²` by a Lean `evaluate` query.
 
 *Effect on the fooling example:* the hull candidates include the diagonal's ends, so
 the segment search now starts in the right basin and finds `F² = 0.0117` (was 0.0264
@@ -124,10 +134,10 @@ can be saved to and loaded from JSON. Everything is recorded exactly (`F²`, not
 
 **Attempts policy (agreed 2026-10-20; implemented in `polyfit/attempt.py`, `pointset.py`):**
 - Each `PointSet` carries `attempts`, the list of its completed fits in order
-  (`ps.fit(n_vertices=…, missing_edges=…, backend=…)` runs one and appends it).
+  (`ps.fit(n_vertices=…, missing_edges=…, engine=…)` runs one and appends it).
 - Only polygon fits are attempts. `evaluate` calls are queries and are not recorded.
 - An attempt is never repeated: an attempt's characteristics are `(n_vertices,
-  missing_edges, backend)`, with the missing edges normalised as the solver uses them
+  missing_edges, engine)`, with the missing edges normalised as the solver uses them
   (sorted, duplicates removed, ignored for `n ≤ 2`). If a matching attempt is already
   recorded, `ps.fit` does not run the fitter and returns the recorded one. Solver
   settings (fuel, `K`, …) will join the characteristics once attempts record them.
