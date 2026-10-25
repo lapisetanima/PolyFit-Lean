@@ -77,24 +77,104 @@ noncomputable def trueF2 (pts : Array Pt) (qs : Array Pt) (missing : List Nat) :
 
 /-! ## The three facts about single quantities -/
 
-/-- **Step 2.** The code's point-to-segment distance is the true one (also for a
-zero-length segment, which is a single point). -/
-theorem distSqToSegment_eq (p q₀ q₁ : Pt) :
-    (distSqToSegment p q₀ q₁ : ℝ) = infDistSq p.toR (seg q₀.toR q₁.toR) := by
-  sorry
-
-/-- **Step 3.** The code's segment integral is the true integral of the squared distance
-to `P` along the segment (for nonempty `P`). -/
-theorem segmentIntegral_eq (pts : Array Pt) (hP : pts.size ≠ 0) (q₀ q₁ : Pt) :
-    (segmentIntegral pts q₀ q₁ : ℝ) = ∫ t in (0 : ℝ)..1, infDistSq (segPt q₀.toR q₁.toR t) (ptSet pts) := by
-  sorry
-
 /-- `d(p, q)²` in the plane. -/
 theorem distSq_toR (p q : Pt) : (distSq p q : ℝ) = eDistSq p.toR q.toR := by
   rw [← Int.cast_natCast, distSq_eq]
   simp only [eDistSq, Pt.toR]
   push_cast
   ring
+
+/-- **Step 2.** The code's point-to-segment distance is the true one (also for a
+zero-length segment, which is a single point).
+
+Proof: with `w = p − q₀`, `v = q₁ − q₀`, `P = w · v` and `L = |v|²`, the squared distance
+along the segment is the parabola `g(t) = L t² − 2 P t + |w|²`. The code's value is the least
+`g(t)` on `[0, 1]`: at `t = 0` if `P ≤ 0` (`g(t) − g(0) = t (L t − 2P)`), at `t = 1` if
+`P ≥ L` (`g(t) − g(1) = (1 − t)(2P − L (1 + t))`), and otherwise at `t* = P / L`, where
+`g(t) = L (t − t*)² + (w × v)² / L` by Lagrange's identity
+`|w|² |v|² − (w · v)² = (w × v)²`. A least element is the infimum. -/
+theorem distSqToSegment_eq (p q₀ q₁ : Pt) :
+    (distSqToSegment p q₀ q₁ : ℝ) = infDistSq p.toR (seg q₀.toR q₁.toR) := by
+  -- the coordinates of `w = p − q₀` and `v = q₁ − q₀`, as reals
+  set wi : ℝ := ((p.i - q₀.i : ℤ) : ℝ) with hwi
+  set wj : ℝ := ((p.j - q₀.j : ℤ) : ℝ) with hwj
+  set vi : ℝ := ((q₁.i - q₀.i : ℤ) : ℝ) with hvi
+  set vj : ℝ := ((q₁.j - q₀.j : ℤ) : ℝ) with hvj
+  have hg : ∀ t, eDistSq p.toR (segPt q₀.toR q₁.toR t) = (wi - t * vi) ^ 2 + (wj - t * vj) ^ 2 := by
+    intro t
+    simp only [eDistSq, segPt, Pt.toR, hwi, hwj, hvi, hvj]
+    push_cast
+    ring
+  have hP : ((dot (p - q₀) (q₁ - q₀) : ℤ) : ℝ) = wi * vi + wj * vj := by
+    simp only [dot, hwi, hwj, hvi, hvj]
+    show (((p.i - q₀.i) * (q₁.i - q₀.i) + (p.j - q₀.j) * (q₁.j - q₀.j) : ℤ) : ℝ) = _
+    push_cast; ring
+  have hL : ((dot (q₁ - q₀) (q₁ - q₀) : ℤ) : ℝ) = vi ^ 2 + vj ^ 2 := by
+    simp only [dot, hvi, hvj]
+    show (((q₁.i - q₀.i) * (q₁.i - q₀.i) + (q₁.j - q₀.j) * (q₁.j - q₀.j) : ℤ) : ℝ) = _
+    push_cast; ring
+  have hX : ((cross (p - q₀) (q₁ - q₀) : ℤ) : ℝ) = wi * vj - wj * vi := by
+    simp only [cross, hwi, hwj, hvi, hvj]
+    show (((p.i - q₀.i) * (q₁.j - q₀.j) - (p.j - q₀.j) * (q₁.i - q₀.i) : ℤ) : ℝ) = _
+    push_cast; ring
+  have hd₀ : ((distSq p q₀ : ℚ) : ℝ) = wi ^ 2 + wj ^ 2 := by
+    rw [Rat.cast_natCast, distSq_toR]
+    simp only [eDistSq, Pt.toR, hwi, hwj]
+    push_cast; ring
+  have hd₁ : ((distSq p q₁ : ℚ) : ℝ) = (wi - vi) ^ 2 + (wj - vj) ^ 2 := by
+    rw [Rat.cast_natCast, distSq_toR]
+    simp only [eDistSq, Pt.toR, hwi, hwj, hvi, hvj]
+    push_cast; ring
+  have hL0 : 0 ≤ vi ^ 2 + vj ^ 2 := by positivity
+  -- the code's value is the least squared distance along the segment
+  unfold infDistSq seg
+  rw [Set.image_image]
+  symm
+  apply IsLeast.csInf_eq
+  simp only [distSqToSegment]
+  split_ifs with h₁ h₂
+  · -- `P ≤ 0`: the nearest point is `q₀`
+    have hP0 : wi * vi + wj * vj ≤ 0 := by rw [← hP]; exact_mod_cast h₁
+    refine ⟨⟨0, ⟨le_rfl, zero_le_one⟩, by beta_reduce; rw [hg, hd₀]; ring⟩, ?_⟩
+    rintro _ ⟨t, ⟨ht0, -⟩, rfl⟩
+    beta_reduce; rw [hg, hd₀]
+    nlinarith [mul_nonneg ht0 (mul_nonneg ht0 hL0), mul_nonneg ht0 (neg_nonneg.2 hP0)]
+  · -- `P ≥ L`: the nearest point is `q₁`
+    have hPL : vi ^ 2 + vj ^ 2 ≤ wi * vi + wj * vj := by rw [← hP, ← hL]; exact_mod_cast h₂
+    refine ⟨⟨1, ⟨zero_le_one, le_rfl⟩, by beta_reduce; rw [hg, hd₁]; ring⟩, ?_⟩
+    rintro _ ⟨t, ⟨-, ht1⟩, rfl⟩
+    beta_reduce; rw [hg, hd₁]
+    have h1t : 0 ≤ 1 - t := sub_nonneg.2 ht1
+    have hk : 0 ≤ 2 * (wi * vi + wj * vj) - (vi ^ 2 + vj ^ 2) * (1 + t) := by
+      nlinarith [mul_nonneg h1t hL0]
+    nlinarith [mul_nonneg h1t hk]
+  · -- `0 < P < L`: the nearest point is at `t* = P / L`, inside the segment
+    have hP0 : 0 < wi * vi + wj * vj := by rw [← hP]; exact_mod_cast lt_of_not_ge h₁
+    have hPL : wi * vi + wj * vj < vi ^ 2 + vj ^ 2 := by rw [← hP, ← hL]; exact_mod_cast lt_of_not_ge h₂
+    have hLpos : 0 < vi ^ 2 + vj ^ 2 := hP0.trans hPL
+    set T := (wi * vi + wj * vj) / (vi ^ 2 + vj ^ 2) with hT
+    have hval : (((((cross (p - q₀) (q₁ - q₀) ^ 2 : ℤ) : ℚ) / ((dot (q₁ - q₀) (q₁ - q₀) : ℤ) : ℚ) : ℚ)) : ℝ)
+        = (wi * vj - wj * vi) ^ 2 / (vi ^ 2 + vj ^ 2) := by
+      push_cast
+      rw [hX, hL]
+    -- `g(t) = L (t − t*)² + (w × v)² / L`
+    have hform : ∀ t, (wi - t * vi) ^ 2 + (wj - t * vj) ^ 2
+        = (vi ^ 2 + vj ^ 2) * (t - T) ^ 2 + (wi * vj - wj * vi) ^ 2 / (vi ^ 2 + vj ^ 2) := by
+      intro t
+      rw [hT]
+      field_simp
+      ring
+    refine ⟨⟨T, ⟨div_nonneg hP0.le hLpos.le, (div_le_one hLpos).2 hPL.le⟩, ?_⟩, ?_⟩
+    · beta_reduce; rw [hg, hval, hform]; ring
+    · rintro _ ⟨t, -, rfl⟩
+      beta_reduce; rw [hg, hval, hform]
+      nlinarith [mul_nonneg hLpos.le (sq_nonneg (t - T))]
+
+/-- **Step 3.** The code's segment integral is the true integral of the squared distance
+to `P` along the segment (for nonempty `P`). -/
+theorem segmentIntegral_eq (pts : Array Pt) (hP : pts.size ≠ 0) (q₀ q₁ : Pt) :
+    (segmentIntegral pts q₀ q₁ : ℝ) = ∫ t in (0 : ℝ)..1, infDistSq (segPt q₀.toR q₁.toR t) (ptSet pts) := by
+  sorry
 
 /-- A fold whose steps never decrease the value: a property that holds right after the
 step at `a` and is closed upwards holds at the end. -/
