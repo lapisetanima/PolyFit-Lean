@@ -244,11 +244,14 @@ Mathlib modules they need (loading all of Mathlib is slow).
   `∫ |q(t) − p|² dt ≥ 0` (in `Rat`: `∫ₛᵉ (a + bt)² dt = (e − s)(x² + xy + y²)/3` with
   `x = a + bs`, `y = a + be`). For this, `lowerEnvelopeIntegral` was made recursive and
   clamps each switch time with `max t tc`, so the pieces are in order by construction.
-  **Proved 2026-10-24** (`proofs/Proofs/Polish.lean`): section A, computed `D₂ ≥ 0` and
-  `F² ≥ 0`; section B, `objectiveBelow`'s early exits are exact; section C, each fine and
-  ultra-fine move picks the best candidate (including: the ultra-fine step visits all
-  `9ⁿ` offset choices, its table holds the moved edges, and the whole-number bounds are
-  sound). Left: the fine-search invariant and the `polish` theorems (sections D–E).
+  **Proved 2026-10-24** (`proofs/Proofs/Polish.lean`, no `sorry`, standard axioms only):
+  for every `n`, `polish` keeps the vertex count, reports `F²` of its result, is never
+  worse than its start, and **if `diam(P) > 0` and the result is certified, no polygon in
+  the unit cube `{-1,0,1}^{2n}` around it has a lower computed `F²`** (`polish_certified`).
+  On the way: computed `D₂ ≥ 0` and `F² ≥ 0`; `objectiveBelow`'s early exits are exact;
+  each fine and ultra-fine move picks the best candidate (the ultra-fine step visits all
+  `9ⁿ` offset choices, its table holds the moved edges, its whole-number bounds are
+  sound). Still about the computed objective: equality with the true `F²` is layer C.
 - *C. The computed objective equals the mathematical one* (Mathlib reals and integrals):
   `distSqToSegment` = `inf_{t∈[0,1]} |q(t) − p|²`; `segmentIntegral` = `∫₀¹ min_p |q(t) − p|² dt`
   (correctness of the lower-envelope walk); hence `objectivePolygon` = `F²` of this spec.

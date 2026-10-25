@@ -25,7 +25,7 @@ separate, later theorem), and `r = polish pts missing start fuel ultraMax`.
 every candidate, and the search would "certify" any polygon. The neighbours `Q'` include
 polygons with zero-length edges, scored with the stand-in `L² := 1`.
 
-**Proof outline** (sections A–C are proved; D–E are planned).
+**Proof outline.**
 * *A. Nothing is negative.* Every point-to-edge distance and every computed `D₂` is
   `≥ 0`, so `F² ≥ 0`. For `D₂` (`segmentIntegral_nonneg`): the envelope walk cuts
   `[0, 1]` into ordered pieces and integrates one line `ℓ_p` on each
@@ -1082,56 +1082,160 @@ theorem bestCubeMove_none (pts : Array Pt) (diam2 : Nat) (missing : List Nat) (q
 
 /-! ## D. The fine search -/
 
+/-- The invariant of the fine search's recursion: from any `q` with `f = F²(q)` and the
+starting vertex count, the result keeps both, is no worse, and (when converged) no fine
+move beats it. -/
+theorem fineSearch_go_spec (pts : Array Pt) (diam2 : Nat) (missing : List Nat) (q₀ : Array Pt)
+    (fuel left : Nat) :
+    ∀ (q : Array Pt) (f : Rat), q.size = q₀.size → f = objectivePolygon pts diam2 q missing →
+      let r := fineSearch.go pts diam2 (presentEdges q₀.size missing) fuel left q f
+      r.1.size = q₀.size ∧ r.2.1 = objectivePolygon pts diam2 r.1 missing ∧ r.2.1 ≤ f ∧
+        (r.2.2.2 = true → bestFineMove pts diam2 (presentEdges q₀.size missing) r.1 r.2.1 = none) := by
+  induction left with
+  | zero =>
+    intro q f hq hf
+    unfold fineSearch.go
+    split
+    · rename_i hnone
+      exact ⟨hq, hf, le_rfl, fun _ => hnone⟩
+    · exact ⟨hq, hf, le_rfl, by simp⟩
+  | succ left ih =>
+    intro q f hq hf
+    unfold fineSearch.go
+    split
+    · rename_i hnone
+      exact ⟨hq, hf, le_rfl, fun _ => hnone⟩
+    · rename_i q' f' hsome
+      rw [← hq] at hsome
+      obtain ⟨hlt, hsize, hval⟩ := bestFineMove_some pts diam2 missing q q' f f' hsome
+      obtain ⟨h₁, h₂, h₃, h₄⟩ := ih q' f' (hsize.trans hq) hval
+      exact ⟨h₁, h₂, h₃.trans hlt.le, h₄⟩
+
 /-- The fine search keeps `f = F²(q)` and the vertex count, never increases `f`, and when
 it converges, no fine move beats the result.
 
-Proof (planned): induction on the moves left in `fineSearch.go`, using
-`bestFineMove_some` for each accepted move. -/
+Proof: `fineSearch_go_spec`, by induction on the moves left; each accepted move is
+strictly better and scored honestly (`bestFineMove_some`). -/
 theorem fineSearch_spec (pts : Array Pt) (diam2 : Nat) (missing : List Nat) (q₀ : Array Pt)
     (f₀ : Rat) (fuel : Nat) (hf : f₀ = objectivePolygon pts diam2 q₀ missing) :
     let r := fineSearch pts diam2 (presentEdges q₀.size missing) q₀ f₀ fuel
     r.1.size = q₀.size ∧ r.2.1 = objectivePolygon pts diam2 r.1 missing ∧ r.2.1 ≤ f₀ ∧
-      (r.2.2.2 = true → bestFineMove pts diam2 (presentEdges q₀.size missing) r.1 r.2.1 = none) := by
-  sorry
+      (r.2.2.2 = true → bestFineMove pts diam2 (presentEdges q₀.size missing) r.1 r.2.1 = none) :=
+  fineSearch_go_spec pts diam2 missing q₀ fuel fuel q₀ f₀ rfl hf
 
 /-! ## E. `polish` -/
 
+/-- `diam(P) > 0` needs a point. -/
+theorem size_pos_of_diamSq_pos (pts : Array Pt) (h : 0 < diamSq pts) : 0 < pts.size := by
+  rcases Nat.eq_zero_or_pos pts.size with h0 | h0
+  · obtain rfl : pts = #[] := Array.size_eq_zero_iff.1 h0
+    simp [diamSq] at h
+  · exact h0
+
+/-- The invariant of `polish`'s recursion, carrying all four properties at once. -/
+theorem polish_go_spec (pts : Array Pt) (missing : List Nat) (start : Array Pt) (fuel ultraMax rounds : Nat) :
+    ∀ (q : Array Pt) (f : Rat) (used : Nat), q.size = start.size →
+      f = objectivePolygon pts (diamSq pts) q missing →
+      let r := polish.go pts start fuel ultraMax (diamSq pts) (presentEdges start.size missing) rounds q f used
+      r.vertices.size = start.size ∧ r.objectiveSq = objectivePolygon pts (diamSq pts) r.vertices missing ∧
+        r.objectiveSq ≤ f ∧ (0 < diamSq pts → r.certified = true →
+          ∀ q', InUnitCube r.vertices q' → r.objectiveSq ≤ objectivePolygon pts (diamSq pts) q' missing) := by
+  induction rounds with
+  | zero =>
+    intro q f used hq hf
+    simp only [polish.go]
+    exact ⟨hq, hf, le_rfl, by simp⟩
+  | succ rounds ih =>
+    intro q f used hq hf
+    have spec := fineSearch_spec pts (diamSq pts) missing q f (fuel - used) hf
+    rw [hq] at spec
+    simp only [polish.go]
+    generalize fineSearch pts (diamSq pts) (presentEdges start.size missing) q f (fuel - used) = res at spec ⊢
+    obtain ⟨q₁, f₁, m, conv⟩ := res
+    obtain ⟨h₁, h₂, h₃, h₄⟩ := spec
+    simp only at h₁ h₂ h₃ h₄ ⊢
+    split
+    · -- not converged: out of fuel
+      exact ⟨h₁, h₂, h₃, by simp⟩
+    · rename_i hconv
+      split
+      · -- a segment: the converged fine search already covered the whole cube
+        rename_i h2
+        refine ⟨h₁, h₂, h₃, fun hdiam _ q' hq' => ?_⟩
+        have hpos : 0 < pts.size * diamSq pts := Nat.mul_pos (size_pos_of_diamSq_pos pts hdiam) hdiam
+        have hnone := h₄ (by simpa using hconv)
+        rw [← h₁] at hnone
+        rcases fineMoves_two q₁ q' (h₁.trans (by simpa using h2)) hq' with rfl | ⟨c, hc, rfl⟩
+        · exact h₂.le
+        · exact bestFineMove_none pts _ missing q₁ f₁ hpos hnone c hc
+      · split
+        · -- too many vertices for the ultra-fine step: not certified
+          exact ⟨h₁, h₂, h₃, by simp⟩
+        · split
+          · -- the ultra-fine step found nothing better: certified
+            rename_i hnone
+            refine ⟨h₁, h₂, h₃, fun hdiam _ q' hq' => ?_⟩
+            have hpos : 0 < pts.size * diamSq pts := Nat.mul_pos (size_pos_of_diamSq_pos pts hdiam) hdiam
+            rw [← h₁] at hnone
+            exact bestCubeMove_none pts _ missing q₁ f₁ hpos h₂ hnone q' hq'
+          · -- it found a better polygon: continue from there, if fuel is left
+            rename_i q' f' hsome
+            rw [← h₁] at hsome
+            obtain ⟨hlt, hsize, hval⟩ := bestCubeMove_some pts _ missing q₁ q' f₁ f' hsome
+            split
+            · exact ⟨h₁, h₂, h₃, by simp⟩
+            · obtain ⟨g₁, g₂, g₃, g₄⟩ := ih q' f' (used + m + 1) (hsize.trans h₁) hval
+              exact ⟨g₁, g₂, g₃.trans (hlt.le.trans h₃), g₄⟩
+
+/-- `polish` is its recursion started from `start`. -/
+theorem polish_eq (pts : Array Pt) (missing : List Nat) (start : Array Pt) (fuel ultraMax : Nat) :
+    polish pts missing start fuel ultraMax
+      = polish.go pts start fuel ultraMax (diamSq pts) (presentEdges start.size missing) (fuel + 1) start
+          (objectivePolygon pts (diamSq pts) start missing) 0 := rfl
+
 /-- `polish` keeps the number of vertices.
 
-Proof (planned): induction on the rounds left in `polish.go`, with `fineSearch_spec` and
+Proof: `polish_go_spec`, by induction on the rounds left, with `fineSearch_spec` and
 `bestCubeMove_some`. -/
 theorem polish_size (pts : Array Pt) (missing : List Nat) (start : Array Pt) (fuel ultraMax : Nat) :
     (polish pts missing start fuel ultraMax).vertices.size = start.size := by
-  sorry
+  rw [polish_eq]
+  exact (polish_go_spec pts missing start fuel ultraMax _ start _ 0 rfl rfl).1
 
 /-- The reported `F²` is the computed objective of the reported polygon.
 
-Proof (planned): the same induction; the invariant `f = F²(q)` holds at the start by
-definition and is kept by `fineSearch_spec` and `bestCubeMove_some`. -/
+Proof: `polish_go_spec`; the invariant `f = F²(q)` holds at the start by definition and is
+kept by `fineSearch_spec` and `bestCubeMove_some`. -/
 theorem polish_objectiveSq (pts : Array Pt) (missing : List Nat) (start : Array Pt) (fuel ultraMax : Nat) :
     let r := polish pts missing start fuel ultraMax
     r.objectiveSq = objectivePolygon pts (diamSq pts) r.vertices missing := by
-  sorry
+  intro r
+  rw [show r = _ from polish_eq pts missing start fuel ultraMax]
+  exact (polish_go_spec pts missing start fuel ultraMax _ start _ 0 rfl rfl).2.1
 
 /-- The search never ends worse than it started.
 
-Proof (planned): the same induction; `f` only ever decreases. -/
+Proof: `polish_go_spec`; `f` only ever decreases. -/
 theorem polish_le_start (pts : Array Pt) (missing : List Nat) (start : Array Pt) (fuel ultraMax : Nat) :
     (polish pts missing start fuel ultraMax).objectiveSq
       ≤ objectivePolygon pts (diamSq pts) start missing := by
-  sorry
+  rw [polish_eq]
+  exact (polish_go_spec pts missing start fuel ultraMax _ start _ 0 rfl rfl).2.2.1
 
 /-- **The certificate.** If `diam(P) > 0` and the result is certified, no polygon in the
 unit cube around it has a lower computed objective.
 
-Proof (planned): the same induction. `certified` is reported only (a) for `n = 2`, when
-the last fine search converged: `fineSearch_spec`, `bestFineMove_none` and
-`fineMoves_two`; or (b) when the last fine search converged and `bestCubeMove` found
-nothing: `bestCubeMove_none`. In both cases `polish_objectiveSq` covers `Q' = r.vertices`. -/
+Proof: `polish_go_spec`. `certified` is reported only (a) for `n = 2`, when the last fine
+search converged: `fineSearch_spec`, `bestFineMove_none` and `fineMoves_two`; or (b) when
+the last fine search converged and `bestCubeMove` found nothing: `bestCubeMove_none`. In
+both cases `Q' = r.vertices` is covered by `r.objectiveSq = F²(r.vertices)`. -/
 theorem polish_certified (pts : Array Pt) (missing : List Nat) (start : Array Pt) (fuel ultraMax : Nat)
     (hdiam : 0 < diamSq pts) (hcert : (polish pts missing start fuel ultraMax).certified = true) :
     let r := polish pts missing start fuel ultraMax
     ∀ q', InUnitCube r.vertices q' → r.objectiveSq ≤ objectivePolygon pts (diamSq pts) q' missing := by
-  sorry
+  intro r
+  rw [show r = _ from polish_eq pts missing start fuel ultraMax] at *
+  rw [polish_eq] at hcert
+  exact (polish_go_spec pts missing start fuel ultraMax _ start _ 0 rfl rfl).2.2.2 hdiam hcert
 
 end PolyFit
