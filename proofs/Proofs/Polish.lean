@@ -24,7 +24,7 @@ separate, later theorem), and `r = polish pts missing start fuel ultraMax`.
 every candidate, and the search would "certify" any polygon. The neighbours `Q'` include
 polygons with zero-length edges, scored with the stand-in `L² := 1`.
 
-**Proof outline** (section A is proved; B–E are planned).
+**Proof outline** (sections A and B are proved; C–E are planned).
 * *A. Nothing is negative.* Every point-to-edge distance and every computed `D₂` is
   `≥ 0`, so `F² ≥ 0`. For `D₂` (`segmentIntegral_nonneg`): the envelope walk cuts
   `[0, 1]` into ordered pieces and integrates one line `ℓ_p` on each
@@ -267,29 +267,137 @@ theorem objectivePolygon_nonneg (pts : Array Pt) (diam2 : Nat) (qs : Array Pt) (
 
 /-! ## B. Early exits are exact -/
 
+/-- The `D₁` sum over the points numbered `idx, …, idx + left - 1`, added to `total`, the way
+`objectiveBelow` and `objectiveFromEdges` add it up. -/
+abbrev d1Sum (edges : Array EdgeTerms) (left idx : Nat) (total : Rat) : Rat :=
+  (List.range' idx left).foldl (fun s i => s + nearestSq edges i) total
+
+/-- Adding terms that are `≥ 0` never lowers the total. -/
+theorem le_d1Sum (edges : Array EdgeTerms) (h : ∀ e ∈ edges, e.Nonneg) (left idx : Nat) (total : Rat) :
+    total ≤ d1Sum edges left idx total :=
+  foldl_preserves (total ≤ ·) _ _ _ le_rfl fun _ i _ hb =>
+    le_add_of_le_of_nonneg hb (nearestSq_nonneg edges h i)
+
+/-- If the point-by-point sum runs to the end, it returns the whole sum, and that sum
+stays below the limit (given that it starts below it). -/
+theorem objectiveBelow_go_some (edges : Array EdgeTerms) (limit : Option Rat) (left : Nat) :
+    ∀ (idx : Nat) (total v : Rat), (∀ l ∈ limit, total < l) →
+      objectiveBelow.go edges limit left idx total = some v →
+      v = d1Sum edges left idx total ∧ ∀ l ∈ limit, v < l := by
+  induction left with
+  | zero =>
+    intro idx total v hlt h
+    simp only [objectiveBelow.go, Option.some.injEq] at h
+    subst h
+    exact ⟨rfl, hlt⟩
+  | succ left ih =>
+    intro idx total v hlt h
+    simp only [objectiveBelow.go] at h
+    split_ifs at h with hreach
+    -- not reached: the new total is still below the limit
+    have hlt' : ∀ l ∈ limit, total + nearestSq edges idx < l := by
+      intro l hl
+      cases hl
+      simpa using hreach
+    obtain ⟨hv, hvl⟩ := ih (idx + 1) _ v hlt' h
+    exact ⟨by rw [hv, d1Sum, d1Sum, List.range'_succ, List.foldl_cons], hvl⟩
+
+/-- If the point-by-point sum gives up, the whole sum reaches the limit. -/
+theorem objectiveBelow_go_none (edges : Array EdgeTerms) (h : ∀ e ∈ edges, e.Nonneg)
+    (limit : Option Rat) (left : Nat) :
+    ∀ (idx : Nat) (total : Rat), objectiveBelow.go edges limit left idx total = none →
+      ∃ l ∈ limit, l ≤ d1Sum edges left idx total := by
+  induction left with
+  | zero =>
+    intro idx total hnone
+    simp [objectiveBelow.go] at hnone
+  | succ left ih =>
+    intro idx total hnone
+    simp only [objectiveBelow.go] at hnone
+    rw [d1Sum, List.range'_succ, List.foldl_cons]
+    split_ifs at hnone with hreach
+    · -- reached here; the rest of the sum only adds terms `≥ 0`
+      cases limit with
+      | none => simp at hreach
+      | some l =>
+        refine ⟨l, rfl, le_trans (by simpa using hreach) (le_d1Sum edges h left (idx + 1) _)⟩
+    · exact ih (idx + 1) _ hnone
+
+/-- `objectiveFromEdges` with its `D₁` sum written as `d1Sum`. -/
+theorem objectiveFromEdges_eq (numPts diam2 : Nat) (edges : Array EdgeTerms) :
+    objectiveFromEdges numPts diam2 edges
+      = d1Sum edges numPts 0 0 / (numPts * diam2 : Nat) / 2
+        + edges.foldl (init := (0 : Rat)) (· + ·.d2) / (2 * edges.size : Nat) := by
+  simp only [objectiveFromEdges, d1Sum, List.range_eq_range']
+
 /-- A value from `objectiveBelow` is the exact objective, and below the bound if there is one.
 
-Proof (planned): induction on the points left in `objectiveBelow.go`; the value returned
-is `d1Total / (2 k D) + d2Part`, which is `objectiveFromEdges` rearranged. -/
+Proof: the value is `d1Total / (2 k D) + d2Part` with `d1Total` the whole `D₁` sum
+(`objectiveBelow_go_some`), which is `objectiveFromEdges` rearranged; and `d1Total` is
+below `(b - d2Part) · 2 k D`, which is positive, since otherwise `objectiveBelow` would
+have given up at once. -/
 theorem objectiveBelow_some (numPts diam2 : Nat) (edges : Array EdgeTerms) (bound : Option Rat)
     (v : Rat) (h : objectiveBelow numPts diam2 edges bound = some v) :
     v = objectiveFromEdges numPts diam2 edges ∧ ∀ b ∈ bound, v < b := by
-  sorry
+  simp only [objectiveBelow] at h
+  split_ifs at h with hzero
+  obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.1 h
+  -- the limit is positive (`hzero`), so the sum starts below it
+  have hpos : ∀ l ∈ Option.map (fun b => (b - edges.foldl (init := (0 : Rat)) (· + ·.d2)
+      / (2 * edges.size : Nat)) * (2 * numPts * diam2 : Nat)) bound, (0 : Rat) < l := by
+    intro l hl
+    cases bound with
+    | none => cases hl
+    | some b => cases hl; simpa using hzero
+  obtain ⟨hw', hwl⟩ := objectiveBelow_go_some edges _ numPts 0 0 w hpos hw
+  refine ⟨?_, ?_⟩
+  · rw [hw', objectiveFromEdges_eq]
+    push_cast
+    ring
+  · intro b hb
+    cases hb
+    have hl := hwl _ rfl
+    have hl0 := hpos _ rfl
+    beta_reduce at hl hl0
+    -- `2 k D > 0`, as the limit `(b - d2Part) · 2 k D` is positive
+    have hscale : (0 : Rat) < (2 * numPts * diam2 : Nat) := by
+      rcases (Nat.cast_nonneg (α := Rat) (2 * numPts * diam2)).lt_or_eq with hs | hs
+      · exact hs
+      · rw [← hs, mul_zero] at hl0; exact absurd hl0 (lt_irrefl 0)
+    rw [div_add' _ _ _ hscale.ne', div_lt_iff₀ hscale]
+    linarith
 
 /-- `objectiveBelow` gives up only when the exact objective is `≥` the bound.
 
-Proof (planned): either `(b - d2Part) · scale ≤ 0`, so `b ≤ d2Part ≤ F²` (the `D₁` part
-is `≥ 0`); or a partial `D₁` sum reached the limit, and the remaining terms are `≥ 0`.
-Both need `scale = 2 k D > 0`. -/
+Proof: either `(b - d2Part) · scale ≤ 0`, so `b ≤ d2Part ≤ F²` (the `D₁` part is `≥ 0`);
+or a partial `D₁` sum reached the limit, and the remaining terms are `≥ 0`
+(`objectiveBelow_go_none`). Both need `scale = 2 k D > 0`. -/
 theorem objectiveBelow_none (numPts diam2 : Nat) (edges : Array EdgeTerms) (b : Rat)
-    (hpos : 0 < numPts * diam2) (hnn : ∀ e ∈ edges, ∀ idx < numPts, 0 ≤ e.distSqs[idx]!)
+    (hpos : 0 < numPts * diam2) (hnn : ∀ e ∈ edges, e.Nonneg)
     (h : objectiveBelow numPts diam2 edges (some b) = none) :
     b ≤ objectiveFromEdges numPts diam2 edges := by
-  sorry
-
-
-
-
+  have hscale : (0 : Rat) < (2 * numPts * diam2 : Nat) := by
+    exact_mod_cast (by rw [Nat.mul_assoc]; omega : 0 < 2 * numPts * diam2)
+  have hd1 : 0 ≤ d1Sum edges numPts 0 0 := le_d1Sum edges hnn numPts 0 0
+  rw [objectiveFromEdges_eq]
+  have key : ∀ x : Rat, x / (numPts * diam2 : Nat) / 2 = x / (2 * numPts * diam2 : Nat) := by
+    intro x; push_cast; ring
+  rw [key]
+  simp only [objectiveBelow] at h
+  split_ifs at h with hzero
+  · -- the `D₂` part alone reaches the bound
+    simp only [Option.map_some, Option.any_some, decide_eq_true_eq] at hzero
+    have : b ≤ edges.foldl (init := (0 : Rat)) (· + ·.d2) / (2 * edges.size : Nat) := by
+      by_contra hlt
+      have := mul_pos (sub_pos.2 (lt_of_not_ge hlt)) hscale
+      linarith
+    linarith [div_nonneg hd1 hscale.le]
+  · -- the `D₁` sum reached the limit along the way
+    obtain ⟨l, hl, hle⟩ := objectiveBelow_go_none edges hnn _ numPts 0 0 (Option.map_eq_none_iff.1 h)
+    cases hl
+    have :(b - edges.foldl (init := (0 : Rat)) (· + ·.d2) / (2 * edges.size : Nat))
+        ≤ d1Sum edges numPts 0 0 / (2 * numPts * diam2 : Nat) := (le_div_iff₀ hscale).2 hle
+    linarith
 
 /-! ## C. Each move picks the best candidate -/
 
