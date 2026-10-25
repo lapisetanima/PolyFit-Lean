@@ -76,7 +76,7 @@ Lean 4 is both a fast, compiled functional language and an interactive theorem p
 - **No floating point:** every quantity is an exact `Int`, `Nat` or `Rat`, so mathematical statements apply literally.
 - **Small, checkable steps:** each optimisation (pruning, caching, lower bounds) is a separate function with a one-line correctness property.
 
-**Proof roadmap** (in progress, in a separate project using Mathlib):
+**Proof roadmap** (in a separate project using Mathlib):
 
 - [x] **n = 1:** the rounded centre of mass minimises the objective over all integer points.
 - [x] **Certificate theorem:** if a result is certified (and $\operatorname{diam}(P) > 0$), then $F^2(Q') \ge F^2(Q)$ for the *computed* $F^2$, for every polygon $Q'$ in the unit cube around it.
