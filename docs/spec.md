@@ -244,6 +244,8 @@ Mathlib modules they need (loading all of Mathlib is slow).
   `∫ |q(t) − p|² dt ≥ 0` (in `Rat`: `∫ₛᵉ (a + bt)² dt = (e − s)(x² + xy + y²)/3` with
   `x = a + bs`, `y = a + be`). For this, `lowerEnvelopeIntegral` was made recursive and
   clamps each switch time with `max t tc`, so the pieces are in order by construction.
+  **Proved 2026-10-24** (`proofs/Proofs/Polish.lean`, section A): computed `D₂ ≥ 0` and
+  `F² ≥ 0`; the other `polish` theorems are stated with `sorry`.
 - *C. The computed objective equals the mathematical one* (Mathlib reals and integrals):
   `distSqToSegment` = `inf_{t∈[0,1]} |q(t) − p|²`; `segmentIntegral` = `∫₀¹ min_p |q(t) − p|² dt`
   (correctness of the lower-envelope walk); hence `objectivePolygon` = `F²` of this spec.
