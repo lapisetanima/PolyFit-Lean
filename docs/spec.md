@@ -234,6 +234,16 @@ Mathlib modules they need (loading all of Mathlib is slow).
   **Next (2026-10-23):** these theorems for `polish`, which covers n = 2 as well (the
   separate segment search was removed). `polish` and everything it calls are now
   structural recursion, so they can be proved by induction.
+  **Agreed 2026-10-24:** the certificate assumes `diam(P) > 0` (without it the `D₁` part
+  divides by 0 and `objectiveBelow` rejects every candidate, so the theorem would be
+  false; `parseProblem` already guarantees it). The ultra-fine whole-number bounds
+  (`floorScaled`/`ceilScaled`, which clip negatives to 0) are sound because every
+  computed `D₂` is `≥ 0`, proved by a piecewise argument that needs no correctness of
+  the envelope walk: the walk cuts `[0, 1]` into ordered pieces and integrates one line
+  `ℓ_p` on each, and `L² t² + ℓ_p(t) = |q(t) − p|² ≥ 0` for every `p`, so each piece adds
+  `∫ |q(t) − p|² dt ≥ 0` (in `Rat`: `∫ₛᵉ (a + bt)² dt = (e − s)(x² + xy + y²)/3` with
+  `x = a + bs`, `y = a + be`). For this, `lowerEnvelopeIntegral` was made recursive and
+  clamps each switch time with `max t tc`, so the pieces are in order by construction.
 - *C. The computed objective equals the mathematical one* (Mathlib reals and integrals):
   `distSqToSegment` = `inf_{t∈[0,1]} |q(t) − p|²`; `segmentIntegral` = `∫₀¹ min_p |q(t) − p|² dt`
   (correctness of the lower-envelope walk); hence `objectivePolygon` = `F²` of this spec.
