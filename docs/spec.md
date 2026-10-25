@@ -253,6 +253,11 @@ Mathlib modules they need (loading all of Mathlib is slow).
   `9ⁿ` offset choices, its table holds the moved edges, its whole-number bounds are
   sound). Still about the computed objective: equality with the true `F²` is layer C.
 - *C. The computed objective equals the mathematical one* (Mathlib reals and integrals):
+  **Started 2026-10-24** (`proofs/Proofs/Faithful.lean`): the true `F²` is defined in `ℝ²`
+  (Euclidean distance written out, since Mathlib's distance on `ℝ × ℝ` is the max of the
+  coordinate distances), and `objectivePolygon = trueF2` is proved for nonempty `P` and
+  polygons without zero-length present edges, given the two single-segment facts below
+  (still `sorry`); also `diamSq = diam(P)²` and the certificate for the true `F²`.
   `distSqToSegment` = `inf_{t∈[0,1]} |q(t) − p|²`; `segmentIntegral` = `∫₀¹ min_p |q(t) − p|² dt`
   (correctness of the lower-envelope walk); hence `objectivePolygon` = `F²` of this spec.
 - B + C: a certified result is a local minimum of the true `F²` over the integer cube.
