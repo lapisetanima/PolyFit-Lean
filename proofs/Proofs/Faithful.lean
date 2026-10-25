@@ -1,6 +1,7 @@
 import Mathlib.Analysis.SpecialFunctions.Integrals.Basic
 import Proofs.Point
 import Proofs.Polish
+import Proofs.Envelope
 
 /-!
 # Faithfulness: the computed objective is the mathematical `F²`
@@ -11,15 +12,15 @@ specification and independently of the solver's formulas: in the real plane, wit
 infima over the edges and an integral along each edge. The goal is
 `objectivePolygon_eq_trueF2`: the two agree for every polygon without zero-length edges.
 
-**Plan.**
+**Proof outline.**
 1. *The definitions and the assembly* (this file's first part): `trueF2` from `D1Sq`,
    `D2Sq`, `infDistSq`; and `objectivePolygon_eq_trueF2` from the three facts below plus
    bookkeeping (the infimum over a union of edges is the minimum over the edges, sums
    and means).
 2. *`D₁` for one segment* (`distSqToSegment_eq`): the code's three-branch formula is the
    infimum of the squared distance over the segment.
-3. *`D₂` for one segment* (`segmentIntegral_eq`): the envelope walk computes the integral
-   of the squared distance to `P` along the segment.
+3. *`D₂` for one segment* (`segmentIntegral_eq`): `d₁(q(t), P)² = L² t² + min_p ℓ_p(t)`, and
+   the envelope walk computes `∫₀¹ min_p ℓ_p` (`Envelope.lean`).
 Also `diamSq_eq`: the solver's `diamSq` is the largest squared distance in `P`.
 
 With these, `polish_certified_true`: a certified result is a local minimum of the true
@@ -174,7 +175,49 @@ theorem distSqToSegment_eq (p q₀ q₁ : Pt) :
 to `P` along the segment (for nonempty `P`). -/
 theorem segmentIntegral_eq (pts : Array Pt) (hP : pts.size ≠ 0) (q₀ q₁ : Pt) :
     (segmentIntegral pts q₀ q₁ : ℝ) = ∫ t in (0 : ℝ)..1, infDistSq (segPt q₀.toR q₁.toR t) (ptSet pts) := by
-  sorry
+  set lines := pts.map fun p => (⟨2 * dot (q₀ - p) (q₁ - q₀), dot (q₀ - p) (q₀ - p)⟩ : Line) with hlines
+  have hne : 0 < lines.size := by simp [hlines]; omega
+  set L : ℝ := (dot (q₁ - q₀) (q₁ - q₀) : ℝ) with hL
+  -- each point's squared distance is `L t² + ℓ_p(t)`
+  have hpt : ∀ p : Pt, ∀ t : ℝ, eDistSq (segPt q₀.toR q₁.toR t) p.toR
+      = L * t ^ 2 + (⟨2 * dot (q₀ - p) (q₁ - q₀), dot (q₀ - p) (q₀ - p)⟩ : Line).ev t := by
+    intro p t
+    simp only [eDistSq, segPt, Pt.toR, Line.ev, hL, dot]
+    show _ = (((q₁.i - q₀.i) * (q₁.i - q₀.i) + (q₁.j - q₀.j) * (q₁.j - q₀.j) : ℤ) : ℝ) * t ^ 2
+      + (((2 * ((q₀.i - p.i) * (q₁.i - q₀.i) + (q₀.j - p.j) * (q₁.j - q₀.j)) : ℤ) : ℝ) * t
+      + (((q₀.i - p.i) * (q₀.i - p.i) + (q₀.j - p.j) * (q₀.j - p.j) : ℤ) : ℝ))
+    push_cast
+    ring
+  -- so the squared distance to `P` is `L t² + (the lower envelope)`
+  have hinf : ∀ t : ℝ, infDistSq (segPt q₀.toR q₁.toR t) (ptSet pts) = L * t ^ 2 + envR lines t := by
+    intro t
+    unfold infDistSq
+    apply IsLeast.csInf_eq
+    have hle := foldl_min_le (fun ℓ : Line => ℓ.ev t) lines.toList (lines[0]!.ev t)
+    have h0 : lines[0]! ∈ lines := by rw [getElem!_pos lines 0 hne]; exact Array.getElem_mem hne
+    constructor
+    · rcases foldl_min_cases (fun ℓ : Line => ℓ.ev t) lines.toList (lines[0]!.ev t) with h | ⟨ℓ, hℓ, h⟩
+      · obtain ⟨p, hp, hpeq⟩ := Array.mem_map.1 h0
+        exact ⟨p.toR, ⟨p, hp, rfl⟩, by rw [hpt]; unfold envR; rw [h, ← hpeq]⟩
+      · obtain ⟨p, hp, hpeq⟩ := Array.mem_map.1 (by simpa using hℓ : ℓ ∈ lines)
+        exact ⟨p.toR, ⟨p, hp, rfl⟩, by rw [hpt]; unfold envR; rw [h, ← hpeq]⟩
+    · rintro _ ⟨x, ⟨p, hp, rfl⟩, rfl⟩
+      rw [hpt]
+      have := hle.2 _ (by simpa [hlines] using ⟨p, hp, rfl⟩)
+      unfold envR
+      linarith
+  -- integrate
+  have hint : ∫ t in (0 : ℝ)..1, infDistSq (segPt q₀.toR q₁.toR t) (ptSet pts)
+      = L / 3 + ∫ t in (0 : ℝ)..1, envR lines t := by
+    simp only [hinf]
+    rw [intervalIntegral.integral_add (by apply Continuous.intervalIntegrable; fun_prop)
+      (integrable_envR lines 0 1), intervalIntegral.integral_const_mul, integral_pow]
+    norm_num
+    ring
+  rw [hint, ← lowerEnvelopeIntegral_eq_integral lines hne]
+  simp only [segmentIntegral, hL]
+  push_cast
+  rfl
 
 /-- A fold whose steps never decrease the value: a property that holds right after the
 step at `a` and is closed upwards holds at the end. -/

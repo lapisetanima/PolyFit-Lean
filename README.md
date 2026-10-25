@@ -80,7 +80,7 @@ Lean 4 is both a fast, compiled functional language and an interactive theorem p
 
 - [x] **n = 1:** the rounded centre of mass minimises the objective over all integer points.
 - [x] **Certificate theorem:** if a result is certified (and $\operatorname{diam}(P) > 0$), then $F^2(Q') \ge F^2(Q)$ for the *computed* $F^2$, for every polygon $Q'$ in the unit cube around it.
-- [ ] **Faithfulness:** the computed objective equals the mathematical definition above, including the exact lower-envelope integral.
+- [x] **Faithfulness:** the computed objective equals the mathematical definition above, including the exact lower-envelope integral.
 
 Together, the last two state that **every certified fit is a true local minimum of $F$**, checked by machine.
 
